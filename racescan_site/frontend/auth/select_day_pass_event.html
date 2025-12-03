@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Select Your Event - RaceScan</title>
+    <link rel="stylesheet" href="/static/css/schedule.css">
+    <style>
+        .event-item { margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 8px; }
+        .event-item.finished { opacity: 0.5; }
+        .select-btn { margin-top: 10px; padding: 5px 12px; background: #4CAF50; color: white; border: none; cursor: pointer; }
+        .select-btn:disabled { background: gray; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Select Your Event</h1>
+    <div id="event-list">Loading events...</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment-timezone/0.5.43/moment-timezone-with-data.min.js"></script>
+
+<script>
+      async function loadEvents() {
+        const res = await fetch('/events/events.csv?ts=' + Date.now());
+        const csv = await res.text();
+        const rows = csv.trim().split('\n').slice(1);
+
+        const now = moment.tz("America/New_York");
+
+        let html = '<div class="event-list">';
+
+        rows.forEach(row => {
+          const cols = row.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g).map(col => col.replace(/^"|"$/g, '').trim());
+          if (cols.length < 6) return;
+
+          const [id, name, location, date, time, address] = cols;
+
+          const eventDateTime = moment.tz(`${date} ${time}`, "YYYY-MM-DD HH:mm", "America/New_York");
+          const formattedDateTime = eventDateTime.format("MMM D, YYYY h:mm A z");
+
+          const earlyStart = eventDateTime.clone().subtract(10, "minutes");
+          const endOfDay = eventDateTime.clone().endOf("day");
+
+          let isPast = now.isAfter(endOfDay);
+          let isActive = now.isBetween(earlyStart, endOfDay);
+
+          html += `
+            <div class="event-item ${isPast ? 'finished' : ''}">
+              <h3>${name}</h3>
+              <p>${location} — ${formattedDateTime}</p>
+              <p>${address}</p>
+              <button class="select-btn" ${isPast ? 'disabled' : ''}
+                onclick="submitEvent('${id}', '${name}', '${date}', '${time}')">
+                ${isPast ? 'Finished' : (isActive ? 'Live Now' : 'Select')}
+              </button>
+            </div>
+          `;
+        });
+
+        html += '</div>';
+        document.getElementById('event-list').innerHTML = html;
+      }
+
+
+    async function submitEvent(id, name, date, time) {
+      const res = await fetch('/api/select-day-pass-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ eventId: id, name, date, time })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        alert('✅ Event selected. Your day pass will activate on that date.');
+        window.location.href = '/auth/account.html';
+      } else {
+        alert('❌ Failed to set event. Try again.');
+      }
+    }
+
+    loadEvents();
+</script>
+</body>
+</html>

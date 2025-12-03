@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Live Driver Audio - RaceScan</title>
+    <link rel="stylesheet" href="../static/css/live.css"/>
+    <link rel="icon" type="image/x-icon" href="../static/images/RaceScan.ico">
+    <style>
+      /* Minimal button styles for inline prompts (avoid container conflicts) */
+      .listen-live-btn, .login-btn, .signup-btn, .subscribe-btn, .schedule-btn {
+        background:#ff4d4d; color:#fff; border:none; border-radius:10px;
+        padding:10px 16px; cursor:pointer; text-decoration:none;
+        display:inline-flex; align-items:center; justify-content:center;
+      }
+    </style>
+</head>
+<body>
+<div id="navbar-container"></div>
+<script src="../static/js/load-navbar.js"></script>
+
+<main class="live-page">
+    <h1>Live Driver Audio</h1>
+    <section class="info-card">
+      <div class="hero-meta">
+        <div class="meta-item">
+          <span class="meta-label">Live Status</span>
+          <span id="meta-live-status" class="status-badge">Checking...</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Total Drivers</span>
+          <span id="meta-total-drivers" class="meta-value">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Active Classes</span>
+          <span id="meta-active-classes" class="meta-value">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Event</span>
+          <span id="meta-event" class="meta-value">—</span>
+        </div>
+        
+      </div>
+    </section>
+    <p id="uptime-display" class="icecast-uptime" style="display: none;">⏳ Fetching Icecast uptime...</p>
+    <div id="live-content" class="loading-screen">
+        <p>⏳ Loading... Please wait.</p>
+    </div>
+    <div id="drivers-container"></div>
+    <div id="hero-hidden" style="display:none"></div>
+</main>
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment-timezone/0.5.43/moment-timezone-with-data.min.js"></script>
+
+<script>
+    const ICECAST_STATUS_URL = "/icecast/status-json.xsl";
+    // Info panel elements
+    const metaLiveEl = document.getElementById('meta-live-status');
+    const metaCountEl = document.getElementById('meta-total-drivers');
+    const metaActiveEl = document.getElementById('meta-active-classes');
+    const metaEventEl = document.getElementById('meta-event');
+    // removed Last Updated and Uptime from panel
+    let activeClasses = new Set();
+    let activeMounts = new Set(); // e.g. "/channel1.mp3"
+
+    async function checkSession() {
+        try {
+            const response = await fetch('/api/user-info', {credentials: 'include', cache: 'no-store'});
+            const data = await response.json();
+            console.log("✅ Session Data:", data);
+
+            sessionStorage.setItem("isLoggedIn", data.success);
+            sessionStorage.setItem("isSubscribed", data.subscribed);
+            sessionStorage.setItem("userEmail", data.email || "");
+
+            if (!data.success) {
+                document.getElementById('live-content').innerHTML = `
+          <p style="color: white; font-size: 18px; text-align: center;">
+            Log in or Sign up to access RaceScan
+          </p>
+          <div style="display: flex; justify-content: center; gap: 15px; margin-top: 15px;">
+            <a href="../auth/login.html" class="login-btn">Log In</a>
+            <a href="../auth/signup.html" class="signup-btn">Sign Up</a>
+          </div>`;
+                return;
+            }
+
+            // Refresh mounts first, then proceed
+            await refreshIcecastMounts();
+            fetchIcecastUptime();
+            checkLiveEvent(data.subscribed);
+        } catch (error) {
+            console.error("Error checking session:", error);
+            document.getElementById('live-content').innerHTML = "<p>❌ Error checking session.</p>";
+        }
+    }
+
+    async function checkLiveEvent(isSubscribed = false) {
+        try {
+            const response = await fetch('/events/events.csv?ts=' + Date.now());
+            const text = await response.text();
+            const lines = text.split(/\r?\n/).filter(r => r.trim() !== '');
+            if (!lines.length) { document.getElementById('live-content').innerHTML = '<p>No event data.</p>'; return; }
+            const header = (lines[0] || '').split(',').map(h => h.trim().toLowerCase());
+            const rows = lines.slice(1);
+
+            let activeEvents = [];
+            let nextEvent = null;
+            let nextEventTime = Infinity;
+
+            // CSV parser to preserve empty fields
+            function parseCsvRow(line) {
+                const out = []; let cur = ''; let inQ = false;
+                for (let i = 0; i < line.length; i++) {
+                    const ch = line[i];
+                    if (ch === '"') { if (inQ && line[i+1]==='"'){cur+='"'; i++;} else { inQ = !inQ; } }
+                    else if (ch === ',' && !inQ) { out.push(cur); cur=''; }
+                    else { cur += ch; }
+                }
+                out.push(cur);
+                return out.map(s => s.trim());
+            }
+
+            // Normalize events using Class column if present; fallback to parsing track
+            const idx = {
+                raceId: header.indexOf('raceid'),
+                track: header.indexOf('track'),
+                date: header.indexOf('date'),
+                time: header.indexOf('time'),
+                klass: header.indexOf('class')
+            };
+            const normalized = [];
+            rows.forEach(row => {
+                const columns = parseCsvRow(row);
+                if (!columns || columns.length < 5) return;
+                const raceId = idx.raceId >= 0 ? columns[idx.raceId] : columns[0];
+                const track = idx.track >= 0 ? columns[idx.track] : columns[1];
+                const date = idx.date >= 0 ? columns[idx.date] : columns[3];
+                const time = idx.time >= 0 ? columns[idx.time] : columns[4];
+                const baseStart = moment.tz(`${date} ${time}`, "YYYY-MM-DD HH:mm", "America/New_York");
+                if (!baseStart.isValid()) return;
+                let klass = idx.klass >= 0 ? (columns[idx.klass] || '').toUpperCase() : '';
+                if (!klass) {
+                    if (/(^|\s|-)LMSC(\s|$)/i.test(track)) klass = 'LMSC';
+                    else if (/(^|\s|-)PLM(\s|$)/i.test(track)) klass = 'PLM';
+                }
+                if (!klass) {
+                    // as last resort, create both (legacy behavior)
+                    normalized.push({ raceId: `${raceId}-PLM`, track, classType: 'PLM', start: baseStart.clone() });
+                    normalized.push({ raceId: `${raceId}-LMSC`, track, classType: 'LMSC', start: baseStart.clone().add(2, 'hours') });
+                } else {
+                    normalized.push({ raceId, track, classType: klass, start: baseStart });
+                }
+            });
+
+            normalized.forEach(evt => {
+                const raceEarlyStart = evt.start.clone().subtract(10, "minutes");
+                const raceEnd = evt.start.clone().add(7, "hours");
+
+                if (moment().isBetween(raceEarlyStart, raceEnd)) {
+                    activeEvents.push({ raceId: evt.raceId, track: evt.track, classType: evt.classType });
+                } else if (evt.start.isAfter(moment()) && evt.start.valueOf() < nextEventTime) {
+                    nextEventTime = evt.start.valueOf();
+                    nextEvent = { name: evt.track, date: evt.start.format('YYYY-MM-DD'), time: evt.start.format('HH:mm') };
+                }
+            });
+
+            const contentDiv = document.getElementById("live-content");
+
+            if (activeEvents.length > 0) {
+                activeClasses = new Set(activeEvents.map(e => e.classType));
+                const classDisplay = activeEvents.map(e => e.track).join(" / ");
+                document.querySelector("h1").innerText = `Live Driver Audio - ${classDisplay}`;
+                // info panel updates
+                if (metaEventEl) metaEventEl.textContent = classDisplay || '—';
+                if (metaActiveEl) metaActiveEl.textContent = [...activeClasses].join(' / ') || '—';
+                if (metaLiveEl) { metaLiveEl.classList.remove('status-live','status-offline'); metaLiveEl.textContent = 'Live Now'; metaLiveEl.classList.add('status-live'); }
+
+                const access = isSubscribed || await userHasDayPass(activeEvents[0].raceId);
+                if (!access) {
+                    contentDiv.innerHTML = `
+                        <p style="color: yellow;">You need a subscription or a day pass for this event.</p>
+                        <a href="../auth/subscribe.html" class="subscribe-btn">Subscribe now</a>`;
+                    return;
+                }
+
+                if (activeClasses.size >= 2) {
+                    const classes = Array.from(activeClasses).map(c => String(c).toUpperCase());
+                    const options = ['<option value="ALL">All Drivers</option>'].concat(classes.map(c => `<option value="${c}">${c}</option>`)).join('');
+                    contentDiv.innerHTML = `
+                        <label for="class-filter">Show:</label>
+                        <select id="class-filter">${options}</select>
+                    `;
+
+                    const selectEl = document.getElementById("class-filter");
+                    selectEl.addEventListener("change", () => {
+                        const selected = selectEl.value;
+                        if (selected === 'ALL') {
+                            loadDrivers(classes);
+                        } else {
+                            loadDrivers(selected);
+                        }
+                    });
+
+                    // Default to ALL so we show all active classes; offline streams are indicated
+                    selectEl.value = 'ALL';
+                    loadDrivers(classes);
+                } else {
+                    // Only one class live
+                    contentDiv.innerHTML = ``;
+                    loadDrivers([...activeClasses][0]);
+                }
+
+            } else if (nextEvent) {
+                let diffMs = nextEventTime - now.getTime();
+                let totalMinutes = Math.floor(diffMs / (1000 * 60));
+                let days = Math.floor(totalMinutes / (60 * 24));
+                let hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+                let minutes = totalMinutes % 60;
+
+                contentDiv.innerHTML = `
+                    <p>⏳ No Live Event now. Next event: <strong>${nextEvent.name}</strong></p>
+                    <p>Starts in: <strong>${days}d ${hours}h ${minutes}m</strong> (${nextEvent.date} at ${nextEvent.time})</p>
+                    <a href="/events/schedule.html" class="schedule-btn">View Full Schedule</a>`;
+            } else {
+                contentDiv.innerHTML = `<p>No upcoming events. Check the <a href="../events/schedule.html">schedule</a>.</p>`;
+                if (metaEventEl) metaEventEl.textContent = "—";
+                if (metaActiveEl) metaActiveEl.textContent = "—";
+                if (metaLiveEl) { metaLiveEl.classList.remove('status-live','status-offline'); metaLiveEl.textContent = "Offline"; metaLiveEl.classList.add('status-offline'); }
+                if (metaEventEl) metaEventEl.textContent = '—';
+                if (metaActiveEl) metaActiveEl.textContent = '—';
+                if (metaLiveEl) { metaLiveEl.classList.remove('status-live','status-offline'); metaLiveEl.textContent = 'Offline'; metaLiveEl.classList.add('status-offline'); }
+            }
+
+        } catch (error) {
+            console.error("Error checking live event:", error);
+            document.getElementById('live-content').innerHTML = "<p>❌ Error checking live event.</p>";
+        }
+    }
+
+
+    function formatTimeDifference(startTime) {
+        const now = new Date();
+        const diffMs = new Date(startTime) - now;
+
+        if (diffMs <= 0) return "Starting now!";
+
+        const totalMinutes = Math.floor(diffMs / (1000 * 60));
+        const days = Math.floor(totalMinutes / (60 * 24));
+        const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+        const minutes = totalMinutes % 60;
+
+        return `${days} day${days !== 1 ? "s" : ""}, ${hours} hour${hours !== 1 ? "s" : ""}, ${minutes} minute${minutes !== 1 ? "s" : ""}`;
+    }
+
+    async function userHasDayPass(raceId) {
+        try {
+            const res = await fetch('/api/user-day-passes', {credentials: 'include'});
+            const data = await res.json();
+
+            if (!data.success || !data.passes) return false;
+
+            return data.passes.some(pass => {
+                return String(pass.event_id).toUpperCase() === raceId.toUpperCase();
+            });
+        } catch (err) {
+            console.error("Error checking day pass:", err);
+            return false;
+        }
+    }
+
+
+    async function loadDrivers(filterClass) {
+        try {
+            const response = await fetch('/drivers/drivers.csv?ts=' + Date.now());
+            const text = await response.text();
+            const rowsText = text.split(/\r?\n/).slice(1).filter(r => r.trim() !== "");
+            const rows = rowsText.map(parseCSVRow);
+
+            // Helpers to compute expected mount path slugs (match remote RunStreamer.sh)
+            const isNumericFrequency = (v) => typeof v === 'string' && /^\d+(?:\.\d+)?$/.test(v.trim());
+            const slugify = (value, fallback) => {
+                const v = String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+                return v || String(fallback || '');
+            };
+
+            let driverHTML = `
+              <ul class="drivers-list">
+                <li class="drivers-row header">
+                  <div>#</div>
+                  <div>Driver</div>
+                  <div class="col-hometown">Home Town</div>
+                  <div>Class</div>
+                  <div>Listen</div>
+                </li>`;
+
+            function parseCSVRow(row) {
+                // Split by comma, keep empty fields
+                return row.split(",").map(col => col.replace(/^"|"$/g, '').trim());
+            }
+
+            let visible = 0;
+            // Normalize filter as Set of uppercased classes if an array or Set provided
+            let filterSet = null;
+            if (Array.isArray(filterClass)) {
+                filterSet = new Set(filterClass.map(v => String(v || '').toUpperCase()));
+            } else if (filterClass && typeof filterClass === 'object' && typeof filterClass.has === 'function') {
+                filterSet = new Set(Array.from(filterClass).map(v => String(v || '').toUpperCase()));
+            }
+
+            rows.forEach((columns, index) => {
+                if (!Array.isArray(columns) || columns.length < 6) return;
+
+                const driverNumber = columns[0] || "";
+                const driverName   = columns[1] || "";
+                const state        = columns[2] || "USA";
+                const imageURL     = columns[3] || "";
+                const frequency    = columns[4] || "";
+                const driverClass  = columns[5] || "";
+
+                if (filterSet) {
+                    if (!filterSet.has(String(driverClass).toUpperCase())) return;
+                } else if (filterClass && filterClass !== 'ALL') {
+                    if (String(driverClass) !== String(filterClass)) return;
+                }
+                if (!isNumericFrequency(frequency)) return;
+                // Compute expected mount path
+                const classDisplay = driverClass || 'Unknown';
+                const classSlug = slugify(classDisplay, 'class');
+                const numberSlug = slugify(driverNumber, 'na');
+                const nameSlug = slugify(driverName || driverNumber, 'driver');
+                const baseSlug = `${classSlug}-${numberSlug}-${nameSlug}`;
+                const plainMount = `/${baseSlug}.mp3`;
+                const icecastMount = `/icecast${plainMount}`;
+                const isActive = activeMounts.has(plainMount) || activeMounts.has(icecastMount);
+
+                const formattedNumber = driverNumber.padStart(2, '0');
+                const formattedName = driverName.replace(/[^a-zA-Z0-9]/g, '');
+                const hometown = state || 'USA';
+
+                const numberBadge = `
+                  <div class=\"num-badge\" data-number=\"${formattedNumber}\" data-name=\"${driverName}\" data-logo-url=\"${(imageURL || '').replace(/"/g, '&quot;')}\"></div>`;
+
+                const activeMountPath = activeMounts.has(icecastMount) ? icecastMount : plainMount;
+                const listenBtn = isActive
+                  ? `<button class=\"live-btn play\" onclick=\"redirectToPlayer('${driverNumber}','${driverName}','${state || 'USA'}','${activeMountPath}','${frequency}')\">▶ Listen</button>`
+                  : `<button class=\"live-btn locked\" disabled title=\"Stream offline\">Offline</button>`;
+
+                const classChip = `<span class=\"badge\">${driverClass || '—'}${isActive ? ' •' : ''}</span>`;
+
+                // Show offline drivers with a greyed-out button
+
+                driverHTML += `
+                  <li class=\"drivers-row\">
+                    <div>${numberBadge}</div>
+                    <div>${driverName}</div>
+                    <div class=\"col-hometown\">${hometown}</div>
+                    <div>${classChip}</div>
+                    <div>${listenBtn}</div>
+                  </li>`;
+                visible++;
+            });
+
+            driverHTML += `</ul>`;
+            document.getElementById("drivers-container").innerHTML = driverHTML;
+            tryAttachNumberLogos(document.getElementById("drivers-container"));
+            if (metaCountEl) metaCountEl.textContent = String(visible);
+
+        } catch (error) {
+            console.error("Error loading drivers:", error);
+            document.getElementById('live-content').innerHTML = "<p>❌ Error loading driver list.</p>";
+        }
+    }
+
+    function buildLogoCandidates(number, name, primaryUrl) {
+        // Only use the path provided in drivers.csv (number_logo column).
+        // If it is missing or empty, we return no candidates so the UI falls back to the number badge.
+        if (primaryUrl && typeof primaryUrl === 'string' && primaryUrl.trim()) {
+            return [primaryUrl.trim()];
+        }
+        return [];
+    }
+
+    function tryAttachNumberLogos(scopeEl) {
+        const root = scopeEl || document;
+        const badges = root.querySelectorAll('.num-badge[data-number][data-name]');
+        badges.forEach(badge => {
+            const number = badge.getAttribute('data-number') || '';
+            const name = badge.getAttribute('data-name') || '';
+            const csvUrl = badge.getAttribute('data-logo-url') || '';
+            const candidates = buildLogoCandidates(number, name, csvUrl);
+            let idx = 0;
+            const fallback = () => {
+                badge.innerHTML = `<div class=\"num-fallback\">#${number.replace(/^0+/, '') || '?'}</div>`;
+            };
+            if (!candidates.length) {
+                fallback();
+                return;
+            }
+            const img = new Image();
+            img.className = 'num-logo';
+            img.alt = `#${number.replace(/^0+/, '')} logo`;
+            img.onload = () => {
+                badge.innerHTML = '';
+                badge.appendChild(img);
+            };
+            // Preflight with HEAD to avoid image 404 errors in console
+            const url = candidates[0];
+            try {
+                fetch(url, { method: 'HEAD', cache: 'no-store' })
+                    .then(res => {
+                        if (!res || !res.ok) throw new Error('not found');
+                        img.src = url;
+                    })
+                    .catch(() => {
+                        fallback();
+                    });
+            } catch (_) {
+                fallback();
+            }
+        });
+    }
+
+    function redirectToPlayer(driverNumber, driverName, hometown, streamURL, frequency) {
+        if (!sessionStorage.getItem("isLoggedIn")) {
+            alert("Session lost. Please log in again.");
+            window.location.href = "/auth/login.html";
+            return;
+        }
+
+        window.location.href =
+            `/events/webplayer.html?number=${encodeURIComponent(driverNumber)}`
+            + `&name=${encodeURIComponent(driverName)}`
+            + `&hometown=${encodeURIComponent(hometown)}`
+            + `&stream=${encodeURIComponent(streamURL)}`
+            + `&freq=${encodeURIComponent(frequency)}`;
+    }
+
+
+    async function fetchIcecastUptime() {
+        try {
+            const response = await fetch(ICECAST_STATUS_URL);
+            const data = await response.json();
+            if (!data || !data.icestats || !data.icestats.source) return;
+
+            let sources = Array.isArray(data.icestats.source) ? data.icestats.source : [data.icestats.source];
+            let firstStream = sources[0];
+            let uptime = firstStream.stream_start ? getUptime(firstStream.stream_start) : "Unknown";
+
+            const upEl = document.getElementById("uptime-display");
+            if (upEl) { upEl.innerText = `🔴 Live for: ${uptime}`; upEl.style.display = "block"; }
+
+        } catch (error) {
+            console.error("Error fetching Icecast uptime:", error);
+        }
+    }
+
+    async function refreshIcecastMounts() {
+        try {
+            const response = await fetch(ICECAST_STATUS_URL, { cache: 'no-store' });
+            const data = await response.json();
+            const newSet = new Set();
+            if (data && data.icestats && data.icestats.source) {
+                const sources = Array.isArray(data.icestats.source) ? data.icestats.source : [data.icestats.source];
+                sources.forEach(s => {
+                    const listen = s.listenurl || s.listen_url || '';
+                    let path = '';
+                    try {
+                        const u = new URL(listen);
+                        path = u.pathname || '';
+                    } catch {
+                        const m = (String(listen).match(/\/[A-Za-z0-9_-]+\.mp3$/) || [])[0] || '';
+                        path = m;
+                    }
+                    if (path && path.endsWith('.mp3')) newSet.add(path);
+                });
+            }
+            activeMounts = newSet;
+        } catch (e) {
+            console.warn('Failed to refresh Icecast mounts', e);
+            activeMounts = new Set();
+        }
+    }
+
+    function getUptime(startTime) {
+        let start = new Date(startTime).getTime();
+        let now = new Date();
+        let elapsed = Math.floor((now - start) / 1000);
+        let hours = Math.floor(elapsed / 3600);
+        let minutes = Math.floor((elapsed % 3600) / 60);
+        let seconds = elapsed % 60;
+        return `${hours}h ${minutes}m ${seconds}s`;
+    }
+    checkSession();
+</script>
+</body>
+</html>

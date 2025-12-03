@@ -1,0 +1,169 @@
+@import url('style.css');
+@import url('hero.css');
+
+.signup-container {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 3;
+    border-left-width: 12px;
+    border-left-color: #4f0000;
+    width: 100%;
+    max-width: 400px;
+    padding: 30px;
+    background: linear-gradient(145deg, #292929, #1f1f1f);
+    border-radius: 12px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.7);
+    text-align: center;
+}
+
+.signup-container h1 {
+    color: #f5f5f5;
+    margin-bottom: 20px;
+    font-size: 1.8em;
+    border-left-color: #4f0000;
+}
+
+.signup-container form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.signup-container input {
+    padding: 12px;
+    border: 1px solid #444;
+    border-radius: 6px;
+    background: #1f1f1f;
+    color: #fff;
+    font-size: 1em;
+    transition: border 0.2s;
+}
+
+.signup-container input:focus {
+    border-color: #ff4d4d;
+    outline: none;
+}
+
+.signup-container button {
+    padding: 12px;
+    background: linear-gradient(90deg, #ff4d4d, #ff1a1a);
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-size: 1em;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.signup-container button:disabled {
+    background: #555;
+    cursor: not-allowed;
+}
+
+.signup-container button:hover:enabled {
+    background: linear-gradient(90deg, #ff1a1a, #d40000);
+    transform: scale(1.03);
+}
+
+.password-requirements {
+    background: #1f1f1f;
+    color: #ccc;
+    padding: 10px;
+    border-radius: 6px;
+    margin-top: -10px;
+    display: none;
+    font-size: 0.9em;
+}
+
+.password-requirements ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.password-requirements li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.password-requirements li span {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background-color: #ff4d4d;
+}
+
+.password-requirements li.success span {
+    background-color: #2ecc71;
+}
+
+.login-link {
+    color: #ff4d4d;
+    font-weight: bold;
+    text-decoration: none;
+    padding: 6px 10px;
+    display: inline-block;
+    border: 1px solid #ff4d4d;
+    border-radius: 4px;
+    transition: background 0.2s, color 0.2s;
+}
+
+.login-link:hover {
+    background: #ff4d4d;
+    color: #fff;
+}
+
+.match-status {
+    display: none;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 0.9em;
+    margin-bottom: 10px;
+    text-align: center;
+    transition: opacity 0.2s ease;
+}
+
+.match-status.success {
+    display: block;
+    background-color: #2ecc71;
+    color: white;
+    opacity: 1;
+}
+
+.match-status.error {
+    display: block;
+    background-color: #ff4d4d;
+    color: white;
+    opacity: 1;
+}
+
+@media (max-width: 600px) {
+    .signup-container {
+        width: 90%;
+        padding: 20px;
+        border-radius: 8px;
+    }
+
+    .signup-container h1 {
+        font-size: 1.5em;
+    }
+
+    .signup-container input {
+        padding: 10px;
+        font-size: 0.95em;
+    }
+
+    .signup-container button {
+        padding: 10px;
+        font-size: 0.95em;
+    }
+
+    .login-link {
+        padding: 5px 8px;
+        font-size: 0.9em;
+    }
+}

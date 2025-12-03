@@ -1,0 +1,125 @@
+@import url('style.css');
+@import url('hero.css');
+
+/* CTA Buttons */
+.cta-btn {
+    display: inline-block;
+    padding: 12px 20px;
+    margin: 5px;
+    background-color: #6c6c6c;
+    color: white;
+    border-radius: 5px;
+    text-decoration: none;
+    font-weight: bold;
+    transition: 0.3s ease-in-out;
+}
+
+.cta-btn.secondary {
+    background-color: rgba(255, 0, 0, 0.5);
+    color: black;
+}
+
+.cta-btn:hover {
+    background-color: #d43d3d;
+}
+
+/* Features Section */
+.features {
+    text-align: center;
+    padding: 50px 10px;
+    background-color: #1f1f1f;
+}
+
+.features h2 {
+    margin-bottom: 30px;
+    font-size: 2em;
+}
+
+.feature-grid {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.feature-item {
+    background-color: #292929;
+    padding: 20px;
+    border-radius: 10px;
+    width: 280px;
+    text-align: center;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+}
+
+.feature-item img {
+    width: 100px;
+    margin-bottom: 10px;
+}
+
+.feature-item h3 {
+    color: #d4d3cf
+}
+
+/* Live Preview */
+.live-preview {
+    text-align: center;
+    padding: 40px 10px;
+}
+
+.event-list {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.event-card {
+    background-color: #292929;
+    padding: 15px;
+    border-radius: 8px;
+    width: 260px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+}
+
+.event-card h3 {
+    color: #d4d3cf
+}
+
+.event-btn {
+    display: block;
+    margin-top: 10px;
+    padding: 8px;
+    background-color: #ff4d4d;
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
+    transition: 0.3s;
+}
+
+.event-btn:hover {
+    background-color: #d43d3d;
+}
+
+/* Footer */
+footer {
+    text-align: center;
+    padding: 20px;
+    background-color: #000;
+    color: #ccc;
+}
+
+.feature-item {
+    /* existing styling */
+    position: relative;
+}
+
+/* Make entire feature item clickable but no text decoration */
+.feature-item a.feature-link {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+}
+
+.feature-item a.feature-link:hover {
+    color: #fff; /* or any other hover color */
+}

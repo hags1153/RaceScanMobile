@@ -1,0 +1,55 @@
+<icecast>
+    <location>BevMA</location>
+    <admin>rhags1134@gmail.com</admin>
+
+    <limits>
+        <clients>1000</clients>
+        <sources>60</sources>
+        <queue-size>65536</queue-size>
+        <burst-on-connect>1</burst-on-connect>
+        <burst-size>8192</burst-size>
+        <source-timeout>120</source-timeout>
+    </limits>
+
+    <authentication>
+        <source-password>Antenna13%</source-password>
+        <relay-password>Antenna13%</relay-password>
+        <admin-user>racescan</admin-user>
+        <admin-password>Antenna13%</admin-password>
+    </authentication>
+
+    <hostname>racescan.racing</hostname>
+
+    <listen-socket>
+        <port>8500</port>
+        <bind-address>0.0.0.0</bind-address>
+    </listen-socket>
+
+    <!-- CORS support for browser players -->
+    <http-headers>
+        <header name="Access-Control-Allow-Origin" value="*" />
+        <header name="Access-Control-Allow-Methods" value="GET, OPTIONS" />
+        <header name="Access-Control-Allow-Headers" value="Origin, Accept, Content-Type" />
+    </http-headers>
+
+    <fileserve>1</fileserve>
+
+    <paths>
+        <basedir>/usr/share/icecast2</basedir>
+        <logdir>/var/log/icecast2</logdir>
+        <webroot>/usr/share/icecast2/web</webroot>
+        <adminroot>/usr/share/icecast2/admin</adminroot>
+        <alias source="/" destination="/status.xsl"/>
+    </paths>
+
+    <logging>
+        <accesslog>access.log</accesslog>
+        <errorlog>error.log</errorlog>
+        <loglevel>3</loglevel>
+        <logsize>10000</logsize>
+    </logging>
+
+    <security>
+        <chroot>0</chroot>
+    </security>
+</icecast>

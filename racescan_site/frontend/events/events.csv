@@ -1,0 +1,31 @@
+RaceID,Track,Location,Date,Time,Address,Image,Class
+RACE001,New River All American Speedway,"Jacksonville, NC",2025-06-28,19:00,"8710 NC-17, Jacksonville, NC 28546",/static/tracks/new_river.png,LMSC
+RACE002,New River All American Speedway,"Jacksonville, NC",2025-03-01,17:00,"8710 NC-17, Jacksonville, NC 28546",/static/tracks/new_river.png,PLM
+RACE003,Wake County Speedway,"Raleigh, NC",2025-03-29,17:00,"2109 Simpkins Rd, Raleigh, NC 27603",/static/tracks/wake_county.png,LMSC
+RACE004,Cordele Motor Speedway,"Cordele, GA",2025-04-12,17:00,"385 Farmers Market Rd, Cordele, GA 31015",/static/tracks/crisp.png,PLM
+RACE005,Cordele Motor Speedway,"Cordele, GA",2025-04-12,19:00,"385 Farmers Market Rd, Cordele, GA 31015",/static/tracks/crisp.png,LMSC
+RACE006,Orange County Speedway,"Rougemont, NC",2025-04-26,12:00,"9740 NC-57, Rougemont, NC 27572",/static/tracks/ocs.png,LMSC
+RACE007,Orange County Speedway,"Rougemont, NC",2025-04-26,17:00,"9740 NC-57, Rougemont, NC 27572",/static/tracks/ocs.png,PLM
+RACE008,Ace Speedway,"Altamahaw, NC",2025-05-03,19:00,"3401 Altamahaw Racetrack Rd, Elon, NC 27244",/static/tracks/ace.png,LMSC
+RACE009,Ace Speedway,"Altamahaw, NC",2025-05-03,17:00,"3401 Altamahaw Racetrack Rd, Elon, NC 27244",/static/tracks/ace.png,PLM
+RACE010,North Wilkesboro Speedway,"North Wilkesboro, NC",2025-05-14,17:00,"381 Speedway Ln, North Wilkesboro, NC 28659",/static/tracks/north_wilkensboro.png,LMSC
+RACE011,North Wilkesboro Speedway,"North Wilkesboro, NC",2025-05-14,17:00,"381 Speedway Ln, North Wilkesboro, NC 28659",/static/tracks/north_wilkensboro.png,PLM
+RACE012,Langley Speedway,"Hampton, VA",2025-06-12,13:00,"11 Dale Lemonds Dr, Hampton, VA 23666",/static/tracks/langley.png,LMSC
+RACE013,Dominion Raceway,"Woodford, VA",2025-06-14,13:00,"6501 Dominion Raceway Ave, Woodford, VA 22580",/static/tracks/dominion.png,PLM
+RACE014,Dominion Raceway,"Woodford, VA",2025-06-14,19:00,"6501 Dominion Raceway Ave, Woodford, VA 22580",/static/tracks/dominion.png,LMSC
+RACE015,Caraway Speedway,"Sophia, NC",2025-07-02,17:00,"2518 Race Track Rd, Sophia, NC 27350",/static/tracks/caraway.png,PLM
+RACE016,Caraway Speedway,"Sophia, NC",2025-07-02,19:00,"2518 Race Track Rd, Sophia, NC 27350",/static/tracks/caraway.png,LMSC
+RACE017,Hickory Motor Speedway,"Hickory, NC",2025-08-02,17:00,"3130 US-70, Newton, NC 28658",/static/tracks/hickory.png,PLM
+RACE018,Hickory Motor Speedway,"Hickory, NC",2025-08-02,19:00,"3130 US-70, Newton, NC 28658",/static/tracks/hickory.png,LMSC
+RACE019,Anderson Motor Speedway,"Williamston, SC",2025-08-16,17:00,"313 Irby Rd, Williamston, SC 29697",/static/tracks/anderson.png,PLM
+RACE020,Anderson Motor Speedway,"Williamston, SC",2025-08-16,19:00,"313 Irby Rd, Williamston, SC 29697",/static/tracks/anderson.png,LMSC
+RACE021,Florence Motor Speedway,"Florence, SC",2025-08-29,17:00,"836 E Smith St, Florence, SC 29506",/static/tracks/florence.png,PLM
+RACE022,Florence Motor Speedway,"Florence, SC",2025-08-29,19:00,"836 E Smith St, Florence, SC 29506",/static/tracks/florence.png,LMSC
+RACE023,South Boston Speedway,"South Boston, VA",2025-09-13,17:00,"1188 James D Hagood Hwy, South Boston, VA 24592",/static/tracks/south_boston.png,PLM
+RACE024,TEST,"TEST, TEST",2025-10-17,13:30,"TEST, TEST TEST",/static/tracks/south_boston.png,LMSC
+RACE025,North Wilkesboro Speedway Championship,"North Wilkesboro, NC",2025-10-18,14:00,"381 Speedway Lane, North Wilkesboro, NC 28659",/static/tracks/north_wilkensboro.png,LMSC
+RACE024,North Wilkesboro Speedway Championship,"North Wilkesboro, NC",2025-10-18,12:00,"381 Speedway Lane, North Wilkesboro, NC 28659",/static/tracks/north_wilkensboro.png,PLM
+RACE027,North Wilkesboro Speedway Championship,"North Wilkesboro, NC",2025-10-18,13:00,"381 Speedway Lane, North Wilkesboro, NC 28659",/static/tracks/north_wilkensboro.png,SMT
+RACE028,South Boston Speedway,"South Boston, VA",2025-11-7,14:00,"1188 James D Hagood Hwy, South Boston, VA 24592",/static/tracks/south_boston.png,SMT
+RACE029,South Boston Speedway,"South Boston, VA",2025-11-8,13:00,"1188 James D Hagood Hwy, South Boston, VA 24592",/static/tracks/south_boston.png,SMT
+RACE030,South National Motorsports Park,"Kenly, NC",2025-11-30,12:00,"Road, Kenly, NC 77877",/static/tracks/south_boston.png,SMT

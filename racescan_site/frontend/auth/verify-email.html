@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Your Email</title>
+    <link rel="stylesheet" href="../static/css/style.css">
+    <link rel="icon" type="image/x-icon" href="/static/images/RaceScan.ico">
+</head>
+<body>
+
+<script src="../static/js/load-navbar.js"></script>
+<div id="navbar-container"></div>
+
+<h1>Verify Your Email</h1>
+<p>We have sent a 6-digit verification code to your registered email. Enter it below to verify your account.</p>
+
+<div class="verification-container">
+    <input type="text" id="verification-code" placeholder="Enter 6-digit code" maxlength="6">
+    <button onclick="submitVerification()">Verify</button>
+</div>
+
+<!-- ✅ Ensure the message container exists -->
+<div id="message-container" style="display: none;">
+    <p id="verification-message"></p>
+</div>
+
+<div class="resend-container">
+    <p>Didn’t receive the code?</p>
+    <button id="resend-verification">Resend Verification Email</button>
+</div>
+
+<script>
+    async function fetchUserEmail() {
+        try {
+            const response = await fetch('/api/user-info', { credentials: 'include' });
+            const data = await response.json();
+
+            if (data.success && data.email) {
+                sessionStorage.setItem('userEmail', data.email); // ✅ Store email in sessionStorage
+            }
+        } catch (error) {
+            console.error("❌ Error fetching user email:", error);
+        }
+    }
+
+    async function submitVerification() {
+        const code = document.getElementById('verification-code').value.trim();
+        const messageElement = document.getElementById('verification-message');
+        const messageContainer = document.getElementById('message-container');
+
+        console.log("📡 Attempting to verify code:", code); // ✅ Debugging log
+
+        messageContainer.style.display = "block";
+
+        if (code.length !== 6 || isNaN(Number(code))) {
+            messageElement.innerHTML = "❌ Please enter a valid 6-digit code.";
+            messageContainer.className = "message-error";
+            return;
+        }
+
+        try {
+            const response = await fetch('/verify-code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code }),
+                credentials: 'include'
+            });
+
+            console.log("🔍 Server Response Status:", response.status); // ✅ Log response status
+            const data = await response.json();
+            console.log("🔍 Server Response Data:", data); // ✅ Log full server response
+
+            if (data.success) {
+                messageElement.innerHTML = "✅ Email verified successfully! Redirecting...";
+                messageContainer.className = "message-success";
+                setTimeout(() => { window.location.href = "/events/live.html"; }, 2000);
+            } else {
+                messageElement.innerHTML = `❌ ${data.message}`;
+                messageContainer.className = "message-error";
+            }
+        } catch (error) {
+            console.error("❌ Error verifying code:", error);
+            messageElement.innerHTML = "❌ Something went wrong. Please try again.";
+            messageContainer.className = "message-error";
+        }
+    }
+
+
+    document.getElementById('resend-verification').addEventListener('click', async function () {
+        const email = sessionStorage.getItem('userEmail'); // ✅ Retrieve email from sessionStorage
+
+        if (!email) {
+            console.error("❌ No email found in session storage");
+            return;
+        }
+
+        this.textContent = "⏳ Sending...";
+        this.disabled = true;
+
+        try {
+            const response = await fetch('/resend-code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                this.textContent = "✅ Verification Email Sent!";
+                setTimeout(() => { window.location.href = "/auth/verify-email.html"; }, 3000);
+            } else {
+                this.textContent = "❌ Error Sending Email";
+            }
+        } catch (error) {
+            console.error("❌ Error resending code:", error);
+            this.textContent = "❌ Failed to Send Email";
+        }
+
+        setTimeout(() => {
+            this.textContent = "Resend Verification Email";
+            this.disabled = false;
+        }, 5000);
+    });
+
+    fetchUserEmail(); // ✅ Call function on page load to store the email
+</script>
+<div id="footer-container"></div>
+<script src="../static/js/load-footer.js"></script>
+</body>
+
+</html>

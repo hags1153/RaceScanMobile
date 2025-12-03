@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Standings</title>
+    <link rel="stylesheet" href="../static/css/standings.css">
+
+</head>
+<body>
+<div id="navbar-container"></div>
+<script src="../static/js/load-navbar.js"></script>
+<h1>Driver Standings</h1>
+<table class="standings-table">
+    <thead>
+    <tr>
+        <th>Rank</th>
+        <th>Driver Number</th>
+        <th>Driver Name</th>
+        <th>Starts</th>
+        <th>Points</th>
+        <th>Points Behind</th>
+        <th>Hometown</th>
+        <th>State</th>
+    </tr>
+    </thead>
+    <tbody>
+    <!-- Filled by JavaScript -->
+    </tbody>
+</table>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        fetch('/drivers/drivers.csv?ts=' + Date.now())
+            .then(response => response.text())
+            .then(csvText => {
+                const rows = csvText.split('\n').slice(1);
+                const tableBody = document.querySelector('.standings-table tbody');
+
+                let drivers = [];
+
+                rows.forEach(row => {
+                    const columns = row.split(',');
+
+                    if (columns.length < 8) return; // Ensure row has enough columns
+
+                    let driverData = {
+                        number: columns[1].trim(),
+                        name: columns[2].trim(),
+                        starts: parseInt(columns[3].trim(), 10),
+                        points: parseInt(columns[4].trim(), 10),
+                        hometown: columns[6].trim(),
+                        state: columns[7].trim(),
+                        imageURL: `/static/images/drivers/${columns[1].trim()}.jpg`
+                    };
+
+                    drivers.push(driverData);
+                });
+
+                // Sort drivers by Points in descending order
+                drivers.sort((a, b) => b.points - a.points);
+
+                // Get the leader's points
+                const leaderPoints = drivers.length > 0 ? drivers[0].points : 0;
+
+                // Populate table with sorted data
+                tableBody.innerHTML = "";
+                drivers.forEach((driver, index) => {
+                    const rank = index + 1; // Dynamic ranking
+                    const pointsBehind = Math.abs(leaderPoints - driver.points); // Calculate points behind leader
+
+                    const htmlRow = `
+                        <tr>
+                            <td>${rank}</td>
+                            <td>${driver.number}</td>
+                            <td class="driver-name">
+                                <a href="/drivers/driver.html?name=${driver.name.replace(/\s+/g, '').toLowerCase()}">
+                                    ${driver.name}
+                                </a>
+                            </td>
+                            <td>${driver.starts}</td>
+                            <td>${driver.points}</td>
+                            <td>${pointsBehind === 0 ? "Interval" : `${pointsBehind}`}</td>
+                            <td>${driver.hometown}</td>
+                            <td>${driver.state}</td>
+                        </tr>
+                    `;
+                    tableBody.innerHTML += htmlRow;
+                });
+            })
+            .catch(error => console.error("Error loading standings:", error));
+    });
+</script>
+
+</body>
+</html>

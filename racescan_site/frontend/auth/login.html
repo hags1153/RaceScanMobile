@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log In - RaceScan</title>
+    <link rel="stylesheet" href="../static/css/login.css">
+    <script src="../static/js/load-navbar.js"></script>
+    <link rel="icon" type="image/x-icon" href="../static/images/RaceScan.ico">
+</head>
+<body>
+<!-- Navbar Container -->
+<div id="navbar-container"></div>
+
+<div class="login-container">
+    <h1>Log In</h1>
+    <form id="login-form">
+        <input type="email" id="email" placeholder="Email Address" required>
+        <input type="password" id="password" placeholder="Password" required>
+        <button type="submit">Log In</button>
+    </form>
+    <p>Don't have an account? <a href="../auth/signup.html">Sign Up</a></p>
+    <p><a href="../auth/reset-password.html">Forgot Password?</a></p>
+</div>
+
+<!-- 🔹 Message Container -->
+<div id="message-container" style="display: none;">
+    <div id="message"></div>
+    <button id="resend-verification" style="display: none;">Resend Verification Email</button>
+</div>
+
+
+<script>
+document.getElementById('login-form').addEventListener('submit', async function (e) {
+    e.preventDefault();
+
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    const messageEl = document.getElementById('message');
+    const messageContainer = document.getElementById('message-container');
+    const resendButton = document.getElementById('resend-verification');
+
+    console.log('📤 Sending login request:', { email, password });
+
+    try {
+        const response = await fetch('/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+            cache: 'no-cache'
+        });
+
+        const rawBody = await response.text();
+        let data = {};
+
+        if (rawBody) {
+            const trimmed = rawBody.trim();
+            try {
+                data = JSON.parse(trimmed);
+            } catch (parseError) {
+                console.warn('⚠️ Non-JSON response received:', trimmed);
+                if (trimmed) {
+                    data = { message: trimmed };
+                }
+            }
+        }
+
+        console.log('🔹 Response data:', data);
+
+        messageContainer.classList.remove('success', 'error');
+        messageContainer.style.display = 'block';
+
+        if (response.ok) {
+            messageContainer.classList.add('success');
+            messageEl.textContent = `✅ ${data.message || 'Login successful!'}`;
+            resendButton.style.display = "none";
+            setTimeout(() => {
+                window.location.replace(data.redirect);
+            }, 1000);
+        } else {
+            messageContainer.classList.add('error');
+            const fallbackMessage = response.status === 429
+                ? 'Too many attempts. Please wait a moment and try again.'
+                : 'Login failed. Please try again.';
+            messageEl.textContent = `❌ ${data.message || fallbackMessage}`;
+
+            if (data.action === 'verify_email') {
+                resendButton.style.display = "block";
+                resendButton.setAttribute("data-email", data.email);
+            } else {
+                resendButton.style.display = "none";
+            }
+        }
+
+
+    } catch (error) {
+        console.error('❌ Fetch error:', error);
+        messageContainer.classList.remove('success');
+        messageContainer.classList.add('error');
+        messageEl.textContent = 'An error occurred. Please try again.';
+        messageContainer.style.display = 'block';
+        resendButton.style.display = "none";
+    }
+});
+
+document.getElementById('resend-verification').addEventListener('click', async function () {
+    const email = this.getAttribute("data-email");
+    if (!email) return;
+
+    this.textContent = "⏳ Sending...";
+    this.disabled = true;
+
+    try {
+        const response = await fetch('/resend-code', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            this.textContent = "Verification Email Sent!";
+            this.style.color = "green";
+            setTimeout(() => {
+                window.location.href = "/auth/verify-email.html";
+            }, 3000);
+        } else {
+            this.textContent = "Error Sending Email";
+            this.style.color = "red";
+        }
+
+    } catch (error) {
+        console.error("❌ Error resending code:", error);
+        this.textContent = "Failed to Send Email";
+        this.style.color = "red";
+    }
+
+    setTimeout(() => {
+        this.textContent = "Resend Verification Email";
+        this.disabled = false;
+        this.style.color = "";
+    }, 5000);
+});
+</script>
+<script src="../static/js/slideshow.js"></script>
+<div id="footer-container"></div>
+<script src="../static/js/load-footer.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Billing - RaceScan</title>
+    <link rel="stylesheet" href="../static/css/billing.css">
+    <link rel="icon" type="image/x-icon" href="../static/images/RaceScan.ico">
+</head>
+<body>
+<div id="navbar-container"></div>
+<script src="../static/js/load-navbar.js"></script>
+
+<div class="billing-container">
+    <h1>Billing Information</h1>
+    <form id="checkout-form">
+        <label for="first-name"></label><input type="text" id="first-name" placeholder="First Name" required>
+        <label for="last-name"></label><input type="text" id="last-name" placeholder="Last Name" required>
+        <label for="email"></label><input type="email" id="email" class="full-width" placeholder="Email Address" required>
+
+        <!-- Plan Selection -->
+        <div class="plan-selection">
+            <label for="plan">Select a Plan:</label>
+            <select id="plan" class="full-width" required>
+                <option value="day-pass">RaceScan Day Pass - $10.99 (One-Time)</option>
+                <option value="unlimited">RaceScan Unlimited - $8.99/month (Subscription)</option>
+            </select>
+        </div>
+
+        <button id="checkout-button" type="submit">Proceed to Payment</button>
+    </form>
+</div>
+
+<script>
+    document.getElementById('checkout-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const firstName = document.getElementById('first-name').value;
+        const lastName = document.getElementById('last-name').value;
+        const email = document.getElementById('email').value;
+        const plan = document.getElementById('plan').value; // 'day-pass' or 'unlimited'
+
+        // Send the selected plan to the backend
+        const response = await fetch('/api/create-checkout-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ firstName, lastName, email, plan })
+        });
+
+        const { url } = await response.json();
+        if (url) {
+            window.location.href = url; // Redirect to Stripe Checkout
+        } else {
+            alert("Error: Could not create checkout session.");
+        }
+    });
+</script>
+<div id="footer-container"></div>
+<script src="../static/js/load-footer.js"></script>
+</body>
+</html>

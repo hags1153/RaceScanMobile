@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RaceScan - Home</title>
+    <link rel="stylesheet" href="static/css/index.css">
+    <link rel="icon" type="image/x-icon" href="static/images/RaceScan.ico">
+</head>
+<body>
+<div id="navbar-container"></div>
+<script src="static/js/load-navbar.js"></script>
+
+<!-- Hero Section -->
+<div class="hero">
+    <div class="hero-slideshow"></div>
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+        <h1>Welcome to RaceScan</h1>
+        <p>Your ultimate live racing experience.</p>
+        <a href="events/schedule.html" class="cta-btn">Upcoming Events</a>
+        <div id="dynamic-cta"></div>
+    </div>
+</div>
+
+<!--&lt;!&ndash; Features Section &ndash;&gt;-->
+<!--<div class="feature-grid">-->
+<!--    &lt;!&ndash; Live Audio &ndash;&gt;-->
+<!--    <div class="feature-item">-->
+<!--        <a href="events/live.html" class="feature-link">-->
+<!--            <img src="static/icons/live-audio.svg" alt="Live Stream">-->
+<!--            <h3>Live Audio</h3>-->
+<!--            <p>Hear real-time updates from your favorite drivers.</p>-->
+<!--        </a>-->
+<!--    </div>-->
+
+<!--    &lt;!&ndash; Schedule &ndash;&gt;-->
+<!--    <div class="feature-item">-->
+<!--        <a href="events/schedule.html" class="feature-link">-->
+<!--            <img src="static/icons/event-schedule.svg" alt="Schedule">-->
+<!--            <h3>Event Schedule</h3>-->
+<!--            <p>Stay ahead with the latest race schedules.</p>-->
+<!--        </a>-->
+<!--    </div>-->
+
+<!--    &lt;!&ndash; Standings &ndash;&gt;-->
+<!--    <div class="feature-item">-->
+<!--        <a href="events/standings.html" class="feature-link">-->
+<!--            <img src="static/icons/standings.svg" alt="Standings">-->
+<!--            <h3>Driver Standings</h3>-->
+<!--            <p>Track your favorite drivers' rankings and stats.</p>-->
+<!--        </a>-->
+<!--    </div>-->
+
+<!--    &lt;!&ndash; New: Sign Up &ndash;&gt;-->
+<!--    <div class="feature-item">-->
+<!--        <a href="auth/signup.html" class="feature-link">-->
+<!--            <img src="static/icons/signup.svg" alt="Sign Up">-->
+<!--            <h3>Sign Up Now</h3>-->
+<!--            <p>Join RaceScan to unlock live audio streams and more.</p>-->
+<!--        </a>-->
+<!--    </div>-->
+<!--</div>-->
+
+
+<!-- Load Slideshow -->
+<script src="static/js/slideshow.js"></script>
+<script>
+    async function updateHeroCTA() {
+        let user = {loggedIn: false, subscribed: false};
+        try {
+            const res = await fetch('/api/session', {credentials: 'include'});
+            user = await res.json();
+        } catch (e) {
+            console.error("Error fetching session", e);
+        }
+
+        let liveRace = false;
+        try {
+            const res = await fetch('/events/events.csv?ts=' + Date.now());
+            const text = await res.text();
+            const rows = text.split('\n').slice(1).filter(r => r.trim());
+
+            const now = new Date();
+            for (const row of rows) {
+                const cols = row.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g)?.map(c => c.replace(/^"|"$/g, ''));
+                if (!cols || cols.length < 5) continue;
+
+                const date = cols[3];
+                const time = cols[4];
+                const start = new Date(`${date}T${time}:00-05:00`);
+                const end = new Date(start.getTime() + 3 * 3600 * 1000);
+                if (now >= start && now <= end) {
+                    liveRace = true;
+                    break;
+                }
+            }
+        } catch (e) {
+            console.error("Error checking live event", e);
+        }
+
+        const ctaDiv = document.getElementById('dynamic-cta');
+        let buttonHTML = '';
+
+        if (!user.loggedIn) {
+            buttonHTML = `
+            <a href="auth/signup.html" class="cta-btn secondary">Sign Up</a>
+            <a href="auth/login.html" class="cta-btn secondary">Log In</a>
+        `;
+        } else if (liveRace) {
+            buttonHTML = `<a href="events/live.html" class="cta-btn secondary">Live Now!</a>`;
+        } else if (!user.subscribed) {
+            buttonHTML = `<a href="auth/subscribe.html" class="cta-btn secondary">Subscribe Now!</a>`;
+        } else {
+            buttonHTML = `<a href="events/schedule.html" class="cta-btn secondary">View Schedule</a>`;
+        }
+
+        ctaDiv.innerHTML = buttonHTML;
+
+    }
+
+    updateHeroCTA();
+</script>
+
+<div id="footer-container"></div>
+<script src="static/js/load-footer.js"></script>
+</body>
+</html>

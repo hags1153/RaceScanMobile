@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up - RaceScan</title>
+    <link rel="stylesheet" href="../static/css/signup.css">
+
+</head>
+<body>
+<div id="navbar-container"></div>
+<script src="../static/js/load-navbar.js"></script>
+<!-- Hero Section -->
+<div class="hero">
+    <div class="hero-slideshow"></div>
+    <div class="hero-overlay"></div>
+    <div class="signup-container">
+        <h1>Sign Up</h1>
+        <img src="../static/icons/signup.svg">
+
+        <form id="signup-form" action="/signup" method="POST">
+            <input type="text" name="firstName" placeholder="First Name" required>
+            <input type="text" name="lastName" placeholder="Last Name" required>
+            <input type="email" name="email" placeholder="Email Address" required>
+            <input type="password" id="password" name="password" placeholder="Password" required>
+            <div class="password-requirements" id="password-requirements">
+                <p>Password must include:</p>
+                <ul>
+                    <li><span id="char-count"></span> At least 8 characters</li>
+                    <li><span id="lowercase"></span> A lowercase letter</li>
+                    <li><span id="uppercase"></span> A capital letter</li>
+                    <li><span id="number"></span> A number</li>
+                    <li><span id="special"></span> A special character</li>
+                </ul>
+            </div>
+            <input type="password" id="confirm-password" name="confirm-password" placeholder="Confirm Password"
+                   required>
+            <div id="match-status" class="match-status">Passwords do not match</div>
+            <button type="submit" id="signup-button" disabled>Sign Up</button>
+        </form>
+        <div id="message" style="color: red; display: none;"></div>
+    </div>
+</div>
+<script>
+    document.getElementById('signup-form').addEventListener('submit', function (event) {
+        event.preventDefault();  // Prevent default form submission
+
+        const formData = {
+            firstName: this.firstName.value.trim(),
+            lastName: this.lastName.value.trim(),
+            email: this.email.value.trim(),
+            password: this.password.value.trim(),
+        };
+
+        fetch('/signup', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(formData)
+        })
+            .then(response => response.json())
+            .then(data => {
+                const messageElement = document.getElementById('message');
+                messageElement.style.display = 'block';
+
+                if (data.userExists) {
+                    messageElement.style.color = 'red';
+                    messageElement.innerHTML = `❌ User already exists. <a href='../auth/login.html' class='login-link'>Click here to log in</a>.`;
+                } else if (data.success) {
+                    messageElement.style.color = 'green';
+                    messageElement.textContent = data.message;
+                    setTimeout(() => {
+                        window.location.href = data.redirect;  // ✅ Redirect after 2 seconds
+                    }, 2000);
+                } else {
+                    messageElement.style.color = 'red';
+                    messageElement.textContent = data.message;
+                }
+
+            })
+            .catch(error => {
+                console.error('Error with signup:', error);
+                alert('Failed to sign up.');
+            });
+    });
+
+</script>
+<script>
+    document.getElementById('password').addEventListener('focus', () => {
+        document.getElementById('password-requirements').style.display = 'block';
+    });
+
+    document.getElementById('password').addEventListener('blur', () => {
+        setTimeout(() => {
+            document.getElementById('password-requirements').style.display = 'none';
+        }, 200);
+    });
+
+    const passwordInput = document.getElementById('password');
+    const confirmPasswordInput = document.getElementById('confirm-password');
+    const matchStatus = document.getElementById('match-status');
+    const signupButton = document.getElementById('signup-button');
+
+    function checkPasswordRequirements() {
+        const password = passwordInput.value;
+        const requirements = [
+            {id: 'char-count', fulfilled: password.length >= 8},
+            {id: 'lowercase', fulfilled: /[a-z]/.test(password)},
+            {id: 'uppercase', fulfilled: /[A-Z]/.test(password)},
+            {id: 'number', fulfilled: /[0-9]/.test(password)},
+            {id: 'special', fulfilled: /[!@#$%^&*(),.?":{}|<>]/.test(password)},
+        ];
+
+        let allFulfilled = true;
+        requirements.forEach(req => {
+            const element = document.getElementById(req.id);
+            if (req.fulfilled) {
+                element.parentElement.classList.add('success');
+            } else {
+                element.parentElement.classList.remove('success');
+                allFulfilled = false;
+            }
+        });
+
+        return allFulfilled;
+    }
+
+        function checkPasswordsMatch() {
+            const password = passwordInput.value;
+            const confirmPassword = confirmPasswordInput.value;
+
+            if (confirmPassword.length > 0) {
+                matchStatus.style.display = 'block';  // ✅ Ensure it shows
+
+                if (password === confirmPassword) {
+                    matchStatus.textContent = '✅ Passwords match';
+                    matchStatus.classList.remove('error');
+                    matchStatus.classList.add('success');
+                    return true;
+                } else {
+                    matchStatus.textContent = '❌ Passwords do not match';
+                    matchStatus.classList.remove('success');
+                    matchStatus.classList.add('error');
+                    return false;
+                }
+            } else {
+                matchStatus.style.display = 'none';   // ✅ Hide if confirm empty
+                matchStatus.classList.remove('success', 'error');
+                return false;
+            }
+        }
+
+
+    function updateSignupButtonState() {
+        const requirementsFulfilled = checkPasswordRequirements();
+        const passwordsMatch = checkPasswordsMatch();
+        signupButton.disabled = !(requirementsFulfilled && passwordsMatch);
+    }
+
+    passwordInput.addEventListener('input', updateSignupButtonState);
+    confirmPasswordInput.addEventListener('input', updateSignupButtonState);
+</script>
+<script src="../static/js/slideshow.js"></script>
+<div id="footer-container"></div>
+<script src="../static/js/load-footer.js"></script>
+</body>
+
+</html>

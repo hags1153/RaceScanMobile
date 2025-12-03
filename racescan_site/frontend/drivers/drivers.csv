@@ -1,0 +1,80 @@
+Driver Number,Driver Name,State,number_logo,Frequency_1 (Hz),Class,TC
+00,Chase Burrow,USA,/static/images/number_logos/00_ChaseBurrow.png,458787500,SMT,103.5
+1,Thomas Beane,USA,,461312500,LMSC,179.7
+3,Lanie Buice,USA,/static/images/number_logos/03 Buice.png,459487500,LMSC,210.7
+04,Ronnie Bassett Jr,USA,/static/images/number_logos/04_RonnieBassettJr.png,460812500,SMT,306.9
+1,Andrew Grady,USA,/static/images/number_logos/01_AndrewGrady.png,465087500,SMT,664
+2,Brandon Pierce,USA,/static/images/number_logos/02_BrandonPierce.png,452687500,LMSC,167.9
+4,Kade Brown,USA,/static/images/number_logos/04_KadeBrown.png,459062500,LMSC,103.9
+4s,Donovan Strauss,USA,/static/images/number_logos/4s_DonovanStrauss.png,465125000,LMSC,107.2
+6,Brandon Lopez,USA,/static/images/number_logos/06_BrandonLopez.png,458362500,LMSC,
+7,Tyler Reif,USA,,454687500,LMSC,445
+8,Caden Kvapil,USA,/static/images/number_logos/08_CadenKvapil.png,461787500,LMSC,516
+8F,Tate Fogleman,USA,,461450000,LMSC,445
+12,Trevor Ward,USA,/static/images/number_logos/12_TrevorWard.png,468625000,LMSC,546
+16,Chad McCumbee,USA,/static/images/number_logos/16_ChadMcCumbee.png,468337500,LMSC,546
+17,Blane Harrison,USA,,464475000,LMSC,664
+18,Alex Meggs,USA,,467850000,LMSC,664
+22,Carson Loftin,USA,/static/images/number_logos/22_CarsonLoftin.png,469212500,LMSC,546
+28,Landon S Huffman,USA,/static/images/number_logos/28_LandonSHuffman.png,460412500,LMSC,
+62,Keelen Harvick,USA,,464575000,SMT,
+44,Conner Jones,USA,/static/images/number_logos/44_ConnerJones.png,463075000,LMSC,546
+57,Landon Huffman,USA,/static/images/number_logos/57_LandonHuffman.png,468525000,LMSC,546
+4,Parker Eatmon,USA,/static/images/number_logos/4 Eatmon 2025.png,468975000,SMT,546
+81,Mini Tyrell,USA,/static/images/number_logos/81_MiniTyrell.png,464550000,LMSC,179.9
+88P,Connor Hall,USA,/static/images/number_logos/88_ConnorHall.png,456554000,SMT,654
+88,Doug Barnes Jr,USA,/static/images/number_logos/88 Barnes.png,463925000,SMT,654
+999,CARS Officials,USA,,461487500,LMSC,351
+6,Ben Maier,USA,,468737500,PLM,
+8B,Brandon Lopez,USA,/static/images/number_logos/8B_BrandonLopez.png,458362500,PLM,
+7,Tristan McKee,USA,,451037500,PLM,
+8,Terri Cider,USA,,463387500,PLM,
+9,Ashton Higgins,USA,/static/images/number_logos/09_AshtonHiggins.png,462537500,PLM,
+11,Taylor Mayhew,USA,,462187500,PLM,
+17,Jake Johnson,USA,,457175000,PLM,
+22,Dusty Garus,USA,,463975000,PLM,
+24,Jade Avedisian,USA,/static/images/number_logos/24_JadeAvedisian.png,461625000,PLM,
+25,Issac Kitzmiller,USA,,464562500,PLM,
+29,Kevin Harvick,USA,,457950000,PLM,
+44,Conner Jones,USA,/static/images/number_logos/44_ConnerJones.png,453087500,PLM,546
+47,Tyler Reif,USA,,453375000,PLM,
+51,Luke Baldwin,USA,,464787500,PLM,
+61,Evan McKnight,USA,,457125000,PLM,
+68,Adian Potter,USA,,459812500,PLM,
+96,Spencer Davis,USA,,451250000,PLM,
+97,Dylan Garner,USA,,465950000,PLM,
+97,Jason Kitzmiller,USA,/static/images/number_logos/97_JasonKitzmiller.png,456262500,PLM,
+29,Conner Jones,USA,/static/images/number_logos/29_ConnerJones.png,453087500,PLM,
+74,Rodney Dowless,USA,,461365000,PLM,
+999,CARS Officials,USA,,461487500,PLM,351
+15,Deac McCaskill,NC,,462487500,LMSC,
+17,Josh Berry,TN,/static/images/number_logos/17 Honeycutt.png,464250000,SMT,
+77,Blake Stallings,VA,/static/images/number_logos/77 stallings.png,467387500,LMSC,
+19,Jessica Cann,NC,/static/images/number_logos/19 Cann.png,469850000,LMSC,
+25,Jacob Brost,NC,,464050000,LMSC,
+07,Dylan Ward,NC,,453812500,LMSC,
+17,Stacey Puryear,VA,/static/images/number_logos/17 Puryear.png,465712500,LMSC,
+87va,Mike Looney,VA,,466812500,LMSC,
+07,Aiden King,NC,/static/images/number_logos/7 King.png,454687500,LMSC,
+73,Jimmy Mullins,VA,,451337500,LMSC,
+6,Bobby McCarty,NC,/static/images/number_logos/6 McCarty 2025.png,452800000,SMT,
+77k,Darren Krantz,TX,,458987000,LMSC,
+99,Test Channel,USA,,458980000,LMSC,
+100,Tower Two,USA,,464503000,LMSC,
+27,Jeb Burton,VA,/static/images/number_logos/27 Burton.png,458786000,LMSC,
+8,Thomas Scott,NC,,461487000,LMSC,
+3,Trey Williams,VA,/static/images/number_logos/3 Trey Williams.png,452704000,LMSC,
+31,Andrew Patterson,OH,,464662000,LMSC,
+00,Kyle Barnes,VA,,464962000,LMSC,
+18B,Tristan Brunelli,VA,,467164000,LMSC,
+14,Mason Bailey,VA,/static/images/number_logos/14 Bailey.png,464488000,LMSC,
+92,Lane Woods,VA,,469525000,LMSC,
+55,Mark Wertz,VA,,460912500,LMSC,
+44,Brian Blevins,VA,/static/images/number_logos/44 Blevins.png,463075000,LMSC,
+01,Jared Dawson,VA,,456114000,LMSC,
+SBS,Race Control,VA,,454500000,LMSC,
+99,Test K,NC,,466460000,SMT,
+99,Test L,NC,,464970000,SMT,
+99,Test M,NC,,467740000,SMT,
+99,Test N,NC,,457810000,SMT,
+99,Test O,NC,,462120000,SMT,

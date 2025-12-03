@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Overview</title>
+    <link rel="stylesheet" href="../static/css/account.css">
+    <link rel="icon" type="image/x-icon" href="../static/images/RaceScan.ico">
+</head>
+<body>
+<div id="navbar-container"></div>
+<script src="../static/js/load-navbar.js"></script>
+
+<main class="account-page">
+    <section class="card account-hero">
+        <div class="hero-main">
+            <div class="avatar" aria-hidden="true">
+                <span id="user-initials">RS</span>
+            </div>
+            <div class="hero-copy">
+                <p class="overline">Your Membership</p>
+                <h1>Account Overview</h1>
+                <p class="subtext">Stay on top of your subscription, day passes, and account details in one place.</p>
+            </div>
+        </div>
+        <div class="hero-meta">
+            <div class="meta-item">
+                <span class="meta-label">Current Plan</span>
+                <span class="meta-value" id="hero-plan">Loading...</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Status</span>
+                <span class="meta-value" id="hero-status">Loading...</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Next Renewal</span>
+                <span class="meta-value" id="hero-renewal">Loading...</span>
+            </div>
+        </div>
+    </section>
+
+    <div class="account-grid">
+        <section class="card info-card">
+            <header class="card-header">
+                <h2>User Information</h2>
+            </header>
+            <dl class="info-list">
+                <div class="info-row">
+                    <dt>Name</dt>
+                    <dd id="user-name">Loading...</dd>
+                </div>
+                <div class="info-row">
+                    <dt>Email</dt>
+                    <dd id="user-email">Loading...</dd>
+                </div>
+                <div class="info-row">
+                    <dt>Email Status</dt>
+                    <dd>
+                        <span id="email-verified" class="status-pill">Loading...</span>
+                    </dd>
+                </div>
+            </dl>
+            <div class="card-actions">
+                <button id="resend-verification" class="button button-secondary" style="display: none;">Resend Verification Email</button>
+            </div>
+        </section>
+
+        <section class="card info-card">
+            <header class="card-header">
+                <h2>Subscription Details</h2>
+            </header>
+            <dl class="info-list">
+                <div class="info-row">
+                    <dt>Plan</dt>
+                    <dd id="sub-plan">Loading...</dd>
+                </div>
+                <div class="info-row">
+                    <dt>Status</dt>
+                    <dd id="sub-status">Loading...</dd>
+                </div>
+                <div class="info-row">
+                    <dt>Next Billing Date</dt>
+                    <dd id="sub-billing-date">Loading...</dd>
+                </div>
+            </dl>
+            <div id="day-pass-actions" class="card-actions" style="display: none;">
+                <button class="button" onclick="window.location.href='/auth/select_day_pass.html'">Add Another Day Pass</button>
+                <button class="button button-secondary" onclick="goUnlimited()">Go Unlimited</button>
+            </div>
+        </section>
+
+        <section class="card span-2">
+            <header class="card-header">
+                <div>
+                    <h2>Day Passes</h2>
+                    <p class="subtext">View upcoming, active, and past passes at a glance.</p>
+                </div>
+            </header>
+            <div id="day-passes" class="pass-list">
+                <p class="empty-state">Loading day pass info...</p>
+            </div>
+        </section>
+    </div>
+
+    <section class="card account-actions">
+        <div class="actions-group">
+            <button class="button button-ghost" id="logout-button">Log Out</button>
+        </div>
+    </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment-timezone/0.5.43/moment-timezone-with-data.min.js"></script>
+
+<script>
+    function formatBillingDate(rawDate) {
+        if (!rawDate) {
+            return '—';
+        }
+
+        const parsed = moment(rawDate);
+        if (!parsed.isValid()) {
+            return rawDate;
+        }
+
+        return parsed.tz('America/New_York').format('MMM D, YYYY');
+    }
+
+    function updateVerifiedState(isVerified) {
+        const emailVerified = document.getElementById('email-verified');
+        const resendButton = document.getElementById('resend-verification');
+
+        if (isVerified) {
+            emailVerified.textContent = 'Verified';
+            emailVerified.classList.remove('status-alert');
+            emailVerified.classList.add('status-success');
+            if (resendButton) {
+                resendButton.style.display = 'none';
+            }
+        } else {
+            emailVerified.textContent = 'Not Verified';
+            emailVerified.classList.remove('status-success');
+            emailVerified.classList.add('status-alert');
+            if (resendButton) {
+                resendButton.style.display = 'inline-flex';
+            }
+        }
+    }
+
+    function updateHero(data) {
+        document.getElementById('hero-plan').textContent = data.subscriptionPlan || '—';
+        document.getElementById('hero-status').textContent = data.subscriptionStatus || '—';
+        document.getElementById('hero-renewal').textContent = formatBillingDate(data.nextBillingDate);
+    }
+
+    function updateAvatar(firstName, lastName, email) {
+        const initialsEl = document.getElementById('user-initials');
+        const initials = [firstName, lastName]
+            .filter(Boolean)
+            .map(name => name.trim().charAt(0))
+            .join('')
+            .toUpperCase();
+
+        initialsEl.textContent = initials || (email ? email.charAt(0).toUpperCase() : 'R');
+    }
+
+    function buildPassMarkup(passes) {
+        const now = moment.tz('America/New_York');
+
+        return passes.map(p => {
+            const raceStart = moment.tz(
+                `${p.event_date} ${p.event_time || '00:00'}`,
+                'YYYY-MM-DD HH:mm',
+                'America/New_York'
+            );
+            const formattedDate = raceStart.format('MMM D, YYYY • h:mm A z');
+
+            const raceEarlyStart = raceStart.clone().subtract(10, 'minutes');
+            const raceEnd = raceStart.clone().add(13, 'hours');
+            const endOfDay = raceStart.clone().endOf('day');
+
+            let statusLabel = 'Upcoming';
+            let statusClass = 'badge-upcoming';
+            let actionMarkup = '';
+
+            if (now.isBetween(raceEarlyStart, raceEnd)) {
+                statusLabel = 'Live Now';
+                statusClass = 'badge-live';
+                actionMarkup = '<a href="/events/live.html" class="link-live">Join Live Stream</a>';
+            } else if (now.isAfter(endOfDay)) {
+                statusLabel = 'Expired';
+                statusClass = 'badge-expired';
+            }
+
+            return `
+                <article class="pass-card">
+                    <header class="pass-card-header">
+                        <h3>${p.event_name}</h3>
+                        <span class="badge ${statusClass}">${statusLabel}</span>
+                    </header>
+                    <p class="pass-meta">${formattedDate}</p>
+                    <p class="pass-meta">Race ID: ${p.event_id}</p>
+                    ${actionMarkup ? `<div class="pass-actions">${actionMarkup}</div>` : ''}
+                </article>
+            `;
+        }).join('');
+    }
+
+    async function fetchUserInfo() {
+        try {
+            const response = await fetch(`/api/user-info?nocache=${Date.now()}`, { credentials: 'include' });
+            const data = await response.json();
+
+            if (!data.success) {
+                window.location.href = '/auth/login.html';
+                return;
+            }
+
+            const fullName = [data.firstName, data.lastName].filter(Boolean).join(' ');
+            document.getElementById('user-name').textContent = fullName || '—';
+            document.getElementById('user-email').textContent = data.email || '—';
+            document.getElementById('sub-plan').textContent = data.subscriptionPlan || '—';
+            document.getElementById('sub-status').textContent = data.subscriptionStatus || '—';
+            document.getElementById('sub-billing-date').textContent = formatBillingDate(data.nextBillingDate);
+
+            updateHero(data);
+            updateAvatar(data.firstName, data.lastName, data.email);
+            updateVerifiedState(data.emailVerified);
+
+            if (data.subscriptionPlan && data.subscriptionPlan.toLowerCase().includes('day-pass')) {
+                document.getElementById('day-pass-actions').style.display = 'flex';
+            }
+
+            const passRes = await fetch('/api/user-day-passes', { credentials: 'include' });
+            const passData = await passRes.json();
+            const dpDiv = document.getElementById('day-passes');
+
+            if (passData.success && passData.passes.length > 0) {
+                dpDiv.innerHTML = buildPassMarkup(passData.passes);
+            } else {
+                dpDiv.innerHTML = '<p class="empty-state">No active day passes yet. Purchase one to unlock live coverage.</p>';
+            }
+        } catch (err) {
+            console.error('❌ Error fetching user info:', err);
+        }
+    }
+
+    async function goUnlimited() {
+        try {
+            const response = await fetch('/api/create-checkout-session', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plan: 'unlimited' })
+            });
+
+            const data = await response.json();
+            if (data.url) {
+                window.location.href = data.url;
+            } else {
+                alert('Subscription failed: ' + data.message);
+            }
+        } catch (error) {
+            console.error('❌ Subscription error:', error);
+            alert('Error processing subscription.');
+        }
+    }
+
+    async function logout() {
+        try {
+            const response = await fetch('/logout', { method: 'POST', credentials: 'include' });
+            if (response.ok) {
+                window.location.href = '/auth/login.html';
+            } else {
+                console.error('Error logging out:', response.statusText);
+            }
+        } catch (error) {
+            console.error('Error logging out:', error);
+        }
+    }
+
+    document.getElementById('logout-button').addEventListener('click', logout);
+    fetchUserInfo();
+</script>
+
+<div id="footer-container"></div>
+<script src="../static/js/load-footer.js"></script>
+</body>
+</html>

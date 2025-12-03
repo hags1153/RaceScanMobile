@@ -1,0 +1,43 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: supersecret
+      MYSQL_DATABASE: racescan
+      MYSQL_USER: racescan_user
+      MYSQL_PASSWORD: Antenna13%
+    volumes:
+      - db-data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-psupersecret"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: node
+    ports:
+      - "3000:3000"
+    env_file:
+      - ../backend/.env
+    environment:
+      DB_HOST: db
+      NODE_ENV: production
+      PORT: 3000
+    volumes:
+      - ../frontend:/usr/src/app/frontend:ro  # Serve frontend files (read-only)
+      - ../backend:/usr/src/app:rw            # Node app source
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  db-data:

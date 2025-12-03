@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Drivers</title>
+    <link rel="stylesheet" href="../static/css/drivers.css" />
+    <link rel="icon" type="image/x-icon" href="../static/images/RaceScan.ico" />
+    <style>
+        /* Explicit table layout for drivers list */
+        .drivers-table { width: 100%; border-collapse: collapse; }
+        .drivers-table th, .drivers-table td { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); text-align: left; }
+        .drivers-table th { font-size: 0.8rem; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,0.6); }
+        .drivers-table tbody tr:hover { background: rgba(255,255,255,0.04); }
+        .class-badge { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 0.72rem; letter-spacing: 0.4px; text-transform: uppercase; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); }
+        /* Number badge visuals */
+        .num-badge { width: 44px; height: 44px; border-radius: 10px; background: rgba(255,77,77,0.16); display:flex; align-items:center; justify-content:center; overflow:hidden; }
+        .num-logo { max-width: 90%; max-height: 90%; display:block; }
+        .num-fallback { font-weight: 700; color: #ff9c9c; }
+        /* Compact list layout similar to schedule */
+        .drivers-list { list-style: none; padding: 0; margin: 16px 0 0; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; overflow: hidden; }
+        .drivers-row { display: grid; grid-template-columns: 72px 2fr 1.4fr 1fr 0.9fr; gap: 12px; padding: 12px 14px; align-items: center; background: rgba(255,255,255,0.03); }
+        .drivers-row + .drivers-row { border-top: 1px solid rgba(255,255,255,0.08); }
+        .drivers-row:nth-child(even) { background: rgba(255,255,255,0.04); }
+        .drivers-row.header { background: rgba(255,255,255,0.06); font-size: 0.78rem; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,0.8); }
+        .drivers-row:not(.header):hover { background: rgba(255,255,255,0.08); transition: background 0.2s ease; }
+        .muted { color: rgba(255,255,255,0.75); }
+        @media (max-width: 900px) { .drivers-row { grid-template-columns: 64px 1.6fr 1fr 1fr; } .col-hometown { display:none; } }
+    </style>
+</head>
+<body>
+<div id="navbar-container"></div>
+<script src="../static/js/load-navbar.js"></script>
+
+<main class="drivers-page">
+    <section class="card drivers-hero">
+        <div class="hero-copy">
+            <p class="overline">Driver Directory</p>
+            <h1>Drivers</h1>
+            <p class="subtext">Browse the roster and frequencies. Use Live to listen.</p>
+        </div>
+        <div class="hero-meta">
+            <div class="meta-item">
+                <span class="meta-label">Live Status</span>
+                <span id="meta-live-status" class="status-badge">Checking...</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Total Drivers</span>
+                <span id="meta-total-drivers" class="meta-value">—</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Last Updated</span>
+                <span id="meta-last-updated" class="meta-value">—</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="card driver-list-card">
+        <header class="card-header">
+            <div>
+                <h2>Current Roster</h2>
+                <p class="subtext">Driver directory only. Streams are on Live.</p>
+            </div>
+            <div>
+                <label for="driver-filter" class="sr-only">Filter by Class</label>
+                <select id="driver-filter" class="styled-dropdown">
+                    <option value="ALL">All</option>
+                </select>
+            </div>
+        </header>
+        <div id="driver-list" class="driver-list">
+            <p class="empty-state">Loading drivers...</p>
+        </div>
+    </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment-timezone/0.5.43/moment-timezone-with-data.min.js"></script>
+<script>
+    const userState = { loggedIn: false, subscribed: false };
+    let liveNow = false;
+    let liveClasses = new Set();
+    let allDriverRows = [];
+
+    const liveStatusEl = document.getElementById('meta-live-status');
+    const totalDriversEl = document.getElementById('meta-total-drivers');
+    const lastUpdatedEl = document.getElementById('meta-last-updated');
+    const driverListEl = document.getElementById('driver-list');
+
+    async function checkSession() {
+        try {
+            const res = await fetch('/api/user-info', { credentials: 'include', cache: 'no-store' });
+            const data = await res.json();
+            userState.loggedIn = data.success;
+            userState.subscribed = Boolean(data.subscribed);
+        } catch (err) {
+            console.error('Session check failed', err);
+        }
+    }
+
+    async function checkLiveEvent() {
+        try {
+            const res = await fetch(`/events/events.csv?ts=${Date.now()}`);
+            const text = await res.text();
+            const lines = text.split(/\r?\n/).filter(r => r.trim() !== '');
+            if (!lines.length) { liveNow = false; liveClasses = new Set(); return; }
+            const header = (lines[0] || '').split(',').map(h => h.trim().toLowerCase());
+            const rows = lines.slice(1);
+            const idx = { track: header.indexOf('track'), date: header.indexOf('date'), time: header.indexOf('time'), klass: header.indexOf('class') };
+            const now = moment.tz('America/New_York');
+            const active = new Set();
+            rows.forEach(row => {
+                const cols = parseCsvRow(row);
+                if (!cols || cols.length < 5) return;
+                const date = idx.date >= 0 ? cols[idx.date] : cols[3];
+                const time = idx.time >= 0 ? cols[idx.time] : cols[4];
+                const evtStart = moment.tz(`${date} ${time}`, 'YYYY-MM-DD HH:mm', 'America/New_York');
+                const evtEnd = evtStart.clone().add(3, 'hours');
+                if (!evtStart.isValid()) return;
+                if (now.isBetween(evtStart, evtEnd)) {
+                    let klass = '';
+                    if (idx.klass >= 0) klass = (cols[idx.klass] || '').toUpperCase();
+                    else if (idx.track >= 0) {
+                        const t = cols[idx.track] || '';
+                        if (/(^|\s|-)LMSC(\s|$)/i.test(t)) klass = 'LMSC';
+                        else if (/(^|\s|-)PLM(\s|$)/i.test(t)) klass = 'PLM';
+                    }
+                    if (klass) active.add(klass);
+                }
+            });
+            liveClasses = active;
+            liveNow = active.size > 0;
+        } catch (err) {
+            console.error('Live event check failed', err);
+        }
+    }
+
+    function updateLiveStatusBadge() {
+        if (!liveStatusEl) {
+            return;
+        }
+
+        liveStatusEl.classList.remove('status-live', 'status-offline');
+
+        if (liveNow) {
+            liveStatusEl.textContent = 'Live Now';
+            liveStatusEl.classList.add('status-live');
+        } else {
+            liveStatusEl.textContent = 'Offline';
+            liveStatusEl.classList.add('status-offline');
+        }
+    }
+
+    // CSV parser that preserves empty fields and handles quotes
+    function parseCsvRow(line) {
+        const out = [];
+        let cur = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === '"') {
+                if (inQuotes && line[i + 1] === '"') { cur += '"'; i++; }
+                else { inQuotes = !inQuotes; }
+            } else if (ch === ',' && !inQuotes) {
+                out.push(cur);
+                cur = '';
+            } else {
+                cur += ch;
+            }
+        }
+        out.push(cur);
+        return out.map(s => s.trim());
+    }
+    function buildListMarkup(rows) {
+        const now = moment.tz('America/New_York');
+        const updatedStamp = now.format('MMM D, YYYY h:mm A z');
+        lastUpdatedEl.textContent = updatedStamp;
+        totalDriversEl.textContent = rows.length;
+
+        if (!rows.length) {
+            return '<p class="empty-state">No drivers available right now.</p>';
+        }
+
+        const header = `
+            <ul class="drivers-list">
+              <li class="drivers-row header">
+                <div>#</div>
+                <div>Driver</div>
+                <div class="col-hometown">Home Town</div>
+                <div>Frequency (MHz)</div>
+                <div>Class</div>
+              </li>
+        `;
+
+        const body = rows.map((row, idx) => {
+            const cols = parseCsvRow(row);
+            if (!cols || cols.length < 6) {
+                return '';
+            }
+
+            const number = cols[0] || '—';
+            const name = cols[1] || 'Unknown Driver';
+            const state = cols[2] || 'USA';
+            const freqHz = cols[4] || '';
+            const driverClass = cols[5] ?? '';
+
+            const hometown = (state || 'USA');
+            const cleanedHz = (freqHz || '').toString().trim().replace(/[^0-9.]/g, '');
+            const hzNumber = cleanedHz ? parseFloat(cleanedHz) : NaN;
+            const freqValue = Number.isFinite(hzNumber) && hzNumber > 0 ? `${(hzNumber / 1e6).toFixed(4)}` : '';
+            const classBadge = driverClass ? `<span class=\"class-badge\">${driverClass}</span>` : 'N/A';
+
+            // Placeholder badge; logo attached later with fallbacks
+            const formattedNumber = String(number).padStart(2, '0');
+            // number_logo is column index 3 in drivers.csv
+            const logoUrl = cols[3] || '';
+            const numberBadge = `
+                <div class=\"num-badge\" data-number=\"${formattedNumber}\" data-name=\"${name}\" data-logo-url=\"${String(logoUrl).replace(/"/g, '&quot;')}\"></div>`;
+
+            return `
+              <li class="drivers-row" data-class="${driverClass}">
+                <div>${numberBadge}</div>
+                <div>${name}</div>
+                <div class="col-hometown">${hometown}</div>
+                <div>${freqValue ? `${freqValue} MHz` : 'N/A'}</div>
+                <div>${classBadge}</div>
+              </li>`;
+        }).join('');
+
+        const markup = header + body + '</ul>';
+        // Defer attaching logos until markup is in DOM
+        setTimeout(() => tryAttachNumberLogos(document.getElementById('driver-list')), 0);
+        return markup;
+    }
+
+    async function loadDrivers() {
+        try {
+            const res = await fetch(`/drivers/drivers.csv?ts=${Date.now()}`);
+            const text = await res.text();
+            allDriverRows = text.split("\n").slice(1).filter(r => r.trim() !== '');
+            setupFilterOptions();
+            renderDrivers(document.getElementById('driver-filter').value || 'ALL');
+        } catch (err) {
+            console.error('Driver list failed to load', err);
+            driverListEl.innerHTML = '<p class="empty-state">Unable to load drivers. Please try again later.</p>';
+        }
+    }
+
+    function setupFilterOptions() {
+        const select = document.getElementById('driver-filter');
+        if (!select) return;
+        const classes = Array.from(new Set(
+            (allDriverRows || []).map(row => {
+                const cols = parseCsvRow(row) || [];
+                return (cols[5] || '').toUpperCase();
+            }).filter(v => v)
+        )).sort();
+
+        const current = select.value || 'ALL';
+        select.innerHTML = '<option value="ALL">All</option>' + classes.map(c => `<option value="${c}">${c}</option>`).join('');
+        select.value = classes.includes(current) ? current : 'ALL';
+    }
+
+    function setupFilterOptions() {
+        const select = document.getElementById('driver-filter');
+        if (!select) return;
+        const classes = Array.from(new Set(
+            (allDriverRows || []).map(row => {
+                const cols = parseCsvRow(row) || [];
+                return (cols[5] || '').toUpperCase();
+            }).filter(v => v)
+        )).sort();
+
+        const current = select.value || 'ALL';
+        select.innerHTML = '<option value="ALL">All</option>' + classes.map(c => `<option value="${c}">${c}</option>`).join('');
+        select.value = classes.includes(current) ? current : 'ALL';
+    }
+
+    function renderDrivers(filterClass) {
+        const filtered = allDriverRows.filter(row => {
+            if (filterClass === 'ALL') return true;
+            const cols = parseCsvRow(row) || [];
+            const driverClass = cols[5] || '';
+            return driverClass.toUpperCase() === filterClass;
+        });
+        const markup = buildListMarkup(filtered);
+        driverListEl.innerHTML = markup || '<p class="empty-state">No drivers available for this class.</p>';
+    }
+
+    // Image fallback helpers shared with live.html logic
+    function buildLogoCandidates(number, name, primaryUrl) {
+        // Only use the path provided in drivers.csv (number_logo column).
+        if (primaryUrl && typeof primaryUrl === 'string' && primaryUrl.trim()) {
+            return [primaryUrl.trim()];
+        }
+        return [];
+    }
+
+    function tryAttachNumberLogos(scopeEl) {
+        const root = scopeEl || document;
+        const badges = root.querySelectorAll('.num-badge[data-number][data-name]');
+        badges.forEach(badge => {
+            const number = badge.getAttribute('data-number') || '';
+            const name = badge.getAttribute('data-name') || '';
+            const csvUrl = badge.getAttribute('data-logo-url') || '';
+            const candidates = buildLogoCandidates(number, name, csvUrl);
+            let idx = 0;
+            const fallback = () => {
+                badge.innerHTML = `<div class=\"num-fallback\">#${String(number).replace(/^0+/, '') || '?'}</div>`;
+            };
+            if (!candidates.length) {
+                fallback();
+                return;
+            }
+            const img = new Image();
+            img.className = 'num-logo';
+            img.alt = `#${String(number).replace(/^0+/, '')} logo`;
+            img.onload = () => {
+                badge.innerHTML = '';
+                badge.appendChild(img);
+            };
+            // Preflight with HEAD to avoid image 404 errors in console
+            const url = candidates[0];
+            try {
+                fetch(url, { method: 'HEAD', cache: 'no-store' })
+                    .then(res => {
+                        if (!res || !res.ok) throw new Error('not found');
+                        img.src = url;
+                    })
+                    .catch(() => {
+                        fallback();
+                    });
+            } catch (_) {
+                fallback();
+            }
+        });
+    }
+
+    // No inline players on this page; listening is available on the Live page
+
+    (async () => {
+        await checkSession();
+        await checkLiveEvent();
+        updateLiveStatusBadge();
+        document.getElementById('driver-filter').addEventListener('change', (e) => {
+            renderDrivers(e.target.value);
+        });
+        document.getElementById('driver-filter').value = 'ALL';
+        await loadDrivers();
+    })();
+</script>
+
+<div id="footer-container"></div>
+<script src="../static/js/load-footer.js"></script>
+</body>
+</html>

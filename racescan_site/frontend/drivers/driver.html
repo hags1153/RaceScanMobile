@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Profile</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/x-icon" href="/static/images/RaceScan.ico">
+</head>
+<div id="navbar"></div>
+<body>
+<div id="navbar-container"></div>
+<script src="../static/js/load-navbar.js"></script>
+
+<div class="container">
+    <h1 id="driver-name">Driver Name</h1>
+    <img id="driver-image" src="" alt="Driver Image" style="width: 300px; border-radius: 10px; margin: 20px auto;">
+    <p><strong>Driver Number:</strong> <span id="driver-number"></span></p>
+    <p><strong>Starts:</strong> <span id="starts"></span></p>
+    <p><strong>Points:</strong> <span id="points"></span></p>
+    <p><strong>Hometown:</strong> <span id="town"></span>, <span id="state"></span></p>
+</div>
+
+<script>
+    const driverName = new URLSearchParams(window.location.search).get('name');
+
+    fetch('drivers.csv?ts=' + Date.now())
+        .then(response => response.text())
+        .then(csvText => {
+            const rows = csvText.split('\n').slice(1);
+            rows.forEach(row => {
+                const columns = row.split(',');
+                if (columns[2].replace(' ', '').toLowerCase() === driverName) {
+                    document.querySelector('#driver-name').textContent = columns[2];
+                    document.querySelector('#driver-number').textContent = columns[1];
+                    document.querySelector('#starts').textContent = columns[3];
+                    document.querySelector('#points').textContent = columns[4];
+                    document.querySelector('#town').textContent = columns[6];
+                    document.querySelector('#state').textContent = columns[7];
+                    document.querySelector('#driver-image').src = columns[8];  // Load image URL from CSV
+                }
+            });
+        });
+</script>
+</body>
+</html>

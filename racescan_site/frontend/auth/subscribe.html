@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subscribe - RaceScan</title>
+    <link rel="stylesheet" href="../static/css/style.css">
+    <link rel="stylesheet" href="../static/css/subscribe.css">
+    <link rel="icon" type="image/x-icon" href="/static/images/RaceScan.ico">
+</head>
+<body>
+<div id="navbar-container"></div>
+<script src="../static/js/load-navbar.js"></script>
+
+<div class="subscription-container">
+    <h1>Choose Your RaceScan Plan</h1>
+    <p>Select a plan to start listening to live race events.</p>
+
+    <div class="plans">
+        <!-- Tier 1 - RaceScan Day Pass -->
+        <div class="plan">
+            <h2>RaceScan Day Pass</h2>
+            <p>Listen to any driver for one selected event.</p>
+            <h3>$10.99 <span class="price-term">One-Time Charge</span></h3>
+            <button class="subscribe-btn" onclick="subscribe('day-pass')">Get Single Day Pass</button>
+        </div>
+
+        <!-- Tier 2 - RaceScan Unlimited -->
+        <div class="plan recommended">
+            <h2>RaceScan Unlimited</h2>
+            <p>Listen to all drivers for the duration of your subscription.</p>
+            <h3>$8.99 <span class="price-term">per month</span></h3>
+            <button class="subscribe-btn" onclick="subscribe('unlimited')">Subscribe</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    async function subscribe(plan) {
+        if (plan === 'day-pass') {
+            // Redirect to multi-select page
+            console.log("Redirecting to event selection page...");
+            window.location.href = '/auth/select_day_pass.html';
+            return;
+        }
+
+        // Only handle Stripe checkout for unlimited plan
+        try {
+            const response = await fetch('/api/create-checkout-session', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plan: 'unlimited' })
+            });
+
+            const data = await response.json();
+            if (data.url) {
+                window.location.href = data.url;
+            } else {
+                alert("❌ Subscription failed: " + data.message);
+            }
+        } catch (error) {
+            console.error("❌ Subscription error:", error);
+            alert("❌ Error processing subscription.");
+        }
+    }
+</script>
+<div id="footer-container"></div>
+<script src="../static/js/load-footer.js"></script>
+</body>
+</html>

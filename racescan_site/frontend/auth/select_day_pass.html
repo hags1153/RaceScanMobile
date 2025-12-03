@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Select Events - RaceScan</title>
+  <link rel="stylesheet" href="../static/css/style.css">
+  <link rel="stylesheet" href="../static/css/subscribe_multiselect.css">
+    <link rel="icon" type="image/x-icon" href="/static/images/RaceScan.ico">
+</head>
+<body>
+  <div id="navbar-container"></div>
+  <script src="../static/js/load-navbar.js"></script>
+
+  <div class="container">
+    <h1>Select Your Race Events</h1>
+    <form id="event-form">
+      <table>
+        <thead>
+          <tr>
+            <th>Select</th>
+            <th>Event Name</th>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Location</th>
+          </tr>
+        </thead>
+        <tbody id="event-table-body">
+          <tr><td colspan="5">Loading events...</td></tr>
+        </tbody>
+      </table>
+
+      <div class="total-container">
+        Total: <span class="total-price" id="total-price">$0.00</span>
+        <button id="checkout-btn" type="submit" class="select-btn" disabled>Continue to Checkout</button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    async function loadEvents() {
+      const res = await fetch('/events/events.csv?ts=' + Date.now());
+      const csv = await res.text();
+      const rows = csv.trim().split('\n').filter((row, i) => i !== 0 && row.includes(','));
+      const today = new Date().toISOString().split('T')[0];
+      let html = '';
+
+      rows.forEach(row => {
+        const cols = row.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g)?.map(col => col.replace(/^"|"$/g, '').trim());
+        if (!cols || cols.length < 5) return;
+
+        const [raceId, name, location, date, time] = cols;
+        const isPast = new Date(date) < new Date(today);
+        const disabled = isPast ? 'disabled' : '';
+
+        html += `
+          <tr class="${isPast ? 'finished' : ''}">
+            <td><input type="checkbox" value="${raceId}" data-name="${name}" data-date="${date}" ${disabled} onchange="toggleEvent(this)"></td>
+            <td>${name}</td>
+            <td>${date}</td>
+            <td>${time}</td>
+            <td>${location}</td>
+          </tr>
+        `;
+      });
+
+      document.getElementById('event-table-body').innerHTML = html;
+      updateTotal();
+    }
+
+    let selectedEvents = [];
+
+    function toggleEvent(checkbox) {
+      const id = checkbox.value;
+      const name = checkbox.dataset.name;
+      const date = checkbox.dataset.date;
+
+      if (checkbox.checked) {
+        selectedEvents.push({ eventId: id, name, date });
+      } else {
+        selectedEvents = selectedEvents.filter(e => e.eventId !== id);
+      }
+
+      updateTotal();
+    }
+
+    function updateTotal() {
+      const total = selectedEvents.length * 8.99;
+      document.getElementById('total-price').textContent = `$${total.toFixed(2)}`;
+      document.getElementById('checkout-btn').disabled = selectedEvents.length === 0;
+    }
+
+    async function continueToCheckout(e) {
+      e.preventDefault();
+
+      const res = await fetch('/api/select-day-pass-event', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ selectedEvents })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        const response = await fetch('/api/create-checkout-session', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            plan: 'day-pass',
+            count: selectedEvents.length,
+            selectedEvents // ✅ raceId is passed
+          })
+        });
+
+        const result = await response.json();
+        if (result.url) {
+          window.location.href = result.url;
+        } else {
+          alert("❌ Stripe session failed.");
+        }
+      } else {
+        alert("❌ Failed to submit event selection.");
+      }
+    }
+
+    document.getElementById('event-form').addEventListener('submit', continueToCheckout);
+    document.addEventListener('DOMContentLoaded', loadEvents);
+  </script>
+</body>
+<div id="footer-container"></div>
+<script src="../static/js/load-footer.js"></script>
+
+</html>

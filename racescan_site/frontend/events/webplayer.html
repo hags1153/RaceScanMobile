@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Race Live Audio</title>
+    <link rel="stylesheet" href="../static/css/webplayer.css" />
+    <link rel="icon" type="image/x-icon" href="/static/images/RaceScan.ico" />
+</head>
+<body>
+<div id="navbar-container"></div>
+<script src="../static/js/load-navbar.js"></script>
+
+<main class="player-page">
+    <section class="card player-hero player-authorized" hidden>
+        <div class="hero-main">
+            <div class="driver-visual" id="driver-visual">
+                <div class="driver-fallback-number">#—</div>
+            </div>
+            <div class="hero-copy">
+                <p class="overline">Live Scanner</p>
+                <h1 id="driver-name">Loading...</h1>
+                <p id="driver-info" class="subtext">Loading driver details...</p>
+            </div>
+        </div>
+        <div class="hero-meta">
+            <div class="meta-item">
+                <span class="meta-label">Frequency</span>
+                <span class="meta-value" id="driver-frequency">Loading...</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Class</span>
+                <span class="meta-value" id="driver-class">—</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Live Status</span>
+                <span id="meta-live-status" class="status-badge">Checking...</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Last Updated</span>
+                <span id="meta-last-updated" class="meta-value">—</span>
+            </div>
+        </div>
+        <div class="hero-actions">
+            <style>
+                .audio-wrap { position: relative; display: inline-block; }
+                .player-time-overlay {
+                    position: absolute;
+                    right: 10px;
+                    bottom: 8px;
+                    background: rgba(0,0,0,0.55);
+                    border: 1px solid rgba(255,255,255,0.15);
+                    padding: 2px 8px;
+                    border-radius: 8px;
+                    font-size: 12px;
+                    color: #fff;
+                    pointer-events: none;
+                }
+            </style>
+            <div class="audio-wrap">
+                <audio id="audio-player" controls preload="metadata" playsinline controlslist="nodownload noplaybackrate"></audio>
+                <span id="live-position" class="player-time-overlay">—</span>
+            </div>
+            <span id="live-timer" class="live-timer" style="margin-left:10px;">Live: waiting...</span>
+            <button id="go-live-btn" class="button button-secondary" style="margin-left:8px; display:none;">Go Live</button>
+        </div>
+    </section>
+
+    
+
+    <section id="session-error" class="card session-error" hidden>
+        <p>❌ You must be logged in and subscribed to access this stream.
+            <a href="/auth/login.html">Log in here</a>.
+        </p>
+    </section>
+
+    <section class="card player-footer player-authorized" hidden>
+        <div class="player-actions">
+            <button class="button button-ghost" onclick="window.history.back()">Back to All Drivers</button>
+        </div>
+    </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment-timezone/0.5.43/moment-timezone-with-data.min.js"></script>
+<script>
+const audioPlayer = document.getElementById('audio-player');
+const liveTimer = document.getElementById('live-timer');
+const sessionError = document.getElementById('session-error');
+const authorizedSections = document.querySelectorAll('.player-authorized');
+const liveStatusBadge = document.getElementById('meta-live-status');
+const lastUpdatedEl = document.getElementById('meta-last-updated');
+const debugPanel = document.getElementById('debug-panel');
+
+const AUDIO_EXT_REGEX = /\.(ogg|oga|opus|mp3|aac|m4a)$/i;
+// Be more aggressive chasing the live edge (seconds)
+const LIVE_EDGE_TOLERANCE = 0.5;
+const STATUS_POLL_INTERVAL = 20000;
+const HARD_RESYNC_DELAY_THRESHOLD = 10.0; // be less aggressive
+const HARD_RESYNC_COOLDOWN_MS = 20000; // no spam reloads
+const WATCHDOG_INTERVAL_MS = 15000; // only reload if truly stalled
+const AUTO_CATCHUP_ENABLED = false; // disable auto jump-to-live by default
+const DEFAULT_STREAM_PORTS = [8500];
+// Prefer same-origin first to avoid extra proxying
+const DEFAULT_STREAM_HOSTS = Array.from(new Set(
+    [window.location.hostname, 'racescan.racing'].filter(Boolean)
+));
+
+const playbackState = {
+    candidates: [],
+    currentIndex: 0,
+    statusTimer: null,
+    liveTimer: null,
+    lastStatus: null,
+    lastHardResyncAt: 0,
+    watchdogTimer: null,
+    lastProgressAt: 0,
+    lastCurrentTime: 0
+};
+
+let liveNow = false;
+const MAX_LIVE_CATCHUP_ATTEMPTS = 12;
+let liveCatchupAttempts = 0;
+let liveCatchupHandle = null;
+// Track one-time seek to live edge after metadata is available
+let didInitialLiveSeek = false;
+
+function stripQuery(value) {
+    if (!value) return '';
+    const idx = value.indexOf('?');
+    return idx === -1 ? value : value.slice(0, idx);
+}
+
+function stripExtension(value) {
+    return value ? value.replace(AUDIO_EXT_REGEX, '') : '';
+}
+
+function ensureLeadingSlash(path) {
+    if (!path) return '';
+    return path.startsWith('/') ? path : `/${path}`;
+}
+
+function normalizeMountPath(path) {
+    if (!path) return '';
+    return stripExtension(stripQuery(ensureLeadingSlash(path))).replace(/\/{2,}/g, '/');
+}
+
+function slugify(value, fallback = '') {
+    const v = String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    return v || String(fallback || '');
+}
+
+function formatMinutesSeconds(totalSeconds) {
+    const seconds = Math.max(0, Math.floor(totalSeconds));
+    const minutes = Math.floor(seconds / 60);
+    const remaining = seconds % 60;
+    return `${minutes}:${String(remaining).padStart(2, '0')}`;
+}
+
+function formatHMS(totalSeconds) {
+    const seconds = Math.max(0, Math.floor(totalSeconds));
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remaining = seconds % 60;
+    if (hours > 0) {
+        return `${hours}h ${minutes}m ${remaining}s`;
+    }
+    if (minutes > 0) {
+        return `${minutes}m ${remaining}s`;
+    }
+    return `${remaining}s`;
+}
+
+function escapeHtml(value) {
+    if (value === undefined || value === null) return '';
+    return value.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function describeReadyState(state) {
+    const map = {
+        0: 'HAVE_NOTHING',
+        1: 'HAVE_METADATA',
+        2: 'HAVE_CURRENT_DATA',
+        3: 'HAVE_FUTURE_DATA',
+        4: 'HAVE_ENOUGH_DATA'
+    };
+    return map[state] || `STATE_${state}`;
+}
+
+function describeNetworkState(state) {
+    const map = {
+        0: 'NETWORK_EMPTY',
+        1: 'NETWORK_IDLE',
+        2: 'NETWORK_LOADING',
+        3: 'NETWORK_NO_SOURCE'
+    };
+    return map[state] || `STATE_${state}`;
+}
+
+function formatRange(range) {
+    if (!range || !range.length) return 'n/a';
+    const start = range.start(range.length - 1).toFixed(2);
+    const end = range.end(range.length - 1).toFixed(2);
+    return `${start} → ${end}`;
+}
+
+function buildLiveStreamUrl(base) {
+    if (!base) return '';
+    const timestamp = Date.now().toString();
+    try {
+        const url = new URL(base, window.location.origin);
+        url.searchParams.set('ts', timestamp);
+        return url.origin === window.location.origin ? `${url.pathname}${url.search}` : url.toString();
+    } catch (error) {
+        const separator = base.includes('?') ? '&' : '?';
+        return `${base}${separator}ts=${timestamp}`;
+    }
+}
+
+function getLiveRange() {
+    if (!audioPlayer) return null;
+    if (audioPlayer.seekable && audioPlayer.seekable.length) {
+        return audioPlayer.seekable;
+    }
+    if (audioPlayer.buffered && audioPlayer.buffered.length) {
+        return audioPlayer.buffered;
+    }
+    return null;
+}
+
+function canSeekToLive() {
+    try {
+        if (!audioPlayer) return false;
+        // Only attempt after we have current or future data
+        if (audioPlayer.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return false;
+        const r = getLiveRange();
+        return !!(r && r.length && Number.isFinite(r.end(r.length - 1)));
+    } catch (_) { return false; }
+}
+
+function resetLiveCatchup() {
+    if (liveCatchupHandle) {
+        clearTimeout(liveCatchupHandle);
+    }
+    liveCatchupHandle = null;
+    liveCatchupAttempts = 0;
+}
+
+function attemptLiveCatchup(force = false) {
+    const range = getLiveRange();
+    liveCatchupAttempts += 1;
+
+    if (!range || range.length === 0) {
+        return liveCatchupAttempts < MAX_LIVE_CATCHUP_ATTEMPTS;
+    }
+
+    const liveEdge = range.end(range.length - 1);
+    if (!Number.isFinite(liveEdge)) {
+        return false;
+    }
+
+    const delay = liveEdge - audioPlayer.currentTime;
+    if (force || delay > LIVE_EDGE_TOLERANCE) {
+        audioPlayer.currentTime = Math.max(0, liveEdge - 0.25);
+        return liveCatchupAttempts < MAX_LIVE_CATCHUP_ATTEMPTS;
+    }
+
+    return false;
+}
+
+function scheduleLiveCatchup(immediate = false) {
+    if (!AUTO_CATCHUP_ENABLED) return; // disabled unless explicitly enabled
+    if (!audioPlayer) return;
+    if (liveCatchupAttempts >= MAX_LIVE_CATCHUP_ATTEMPTS) return;
+
+    if (liveCatchupHandle) {
+        clearTimeout(liveCatchupHandle);
+    }
+
+    const delay = immediate ? 0 : 300;
+    liveCatchupHandle = setTimeout(() => {
+        const shouldContinue = attemptLiveCatchup(immediate);
+        if (shouldContinue) {
+            scheduleLiveCatchup(false);
+        } else {
+            liveCatchupHandle = null;
+        }
+    }, delay);
+}
+
+function computeLiveDelay() {
+    try {
+        const range = getLiveRange();
+        if (!range || range.length === 0) return null;
+        const liveEdge = range.end(range.length - 1);
+        if (!Number.isFinite(liveEdge)) return null;
+        const delay = liveEdge - audioPlayer.currentTime;
+        return delay < 0 ? 0 : delay;
+    } catch (error) {
+        console.warn('Unable to compute live delay:', error);
+        return null;
+    }
+}
+
+// For streams that are not truly seekable (progressive MP3), force a fast resync
+// by reloading the stream URL when latency gets too high.
+
+function hardResyncIfNeeded() {
+    try {
+        const now = Date.now();
+        const delay = computeLiveDelay();
+        if (delay == null || audioPlayer.paused) return;
+        if (delay < HARD_RESYNC_DELAY_THRESHOLD) return;
+        if (now - playbackState.lastHardResyncAt < HARD_RESYNC_COOLDOWN_MS) return;
+
+        const candidate = currentCandidate();
+        if (!candidate) return;
+        const liveUrl = buildLiveStreamUrl(candidate);
+        const wasPlaying = !audioPlayer.paused && !audioPlayer.ended;
+
+        audioPlayer.src = liveUrl;
+        audioPlayer.load();
+        playbackState.lastHardResyncAt = now;
+
+        if (wasPlaying) {
+            audioPlayer.play().catch(() => {});
+        }
+    } catch (e) {
+        // no-op
+    }
+}
+
+// Watchdog disabled: rely on natural playback and manual Go Live
+
+// Gentle catch-up using slight playbackRate boost when we’re far behind.
+const MAX_CATCHUP_RATE = 1.0; // keep normal speed
+function applyCatchupSpeed() {
+    // keep playback at normal speed
+    try { if (audioPlayer && audioPlayer.playbackRate !== 1.0) audioPlayer.playbackRate = 1.0; } catch (e) {}
+}
+
+function jumpToLiveEdge(force = false) {
+    try {
+        const range = getLiveRange();
+        if (!range || range.length === 0) return;
+        const liveEdge = range.end(range.length - 1);
+        if (!Number.isFinite(liveEdge)) return;
+        const delay = liveEdge - audioPlayer.currentTime;
+        if (force || delay > LIVE_EDGE_TOLERANCE) {
+            audioPlayer.currentTime = Math.max(0, liveEdge - 0.25);
+        }
+    } catch (error) {
+        console.warn('Unable to seek to live edge:', error);
+    }
+}
+
+function ensureAtLiveEdgeOnce() {
+    if (didInitialLiveSeek) return;
+    try {
+        if (!canSeekToLive()) return;
+        const r = getLiveRange();
+        const liveEdge = r.end(r.length - 1);
+        audioPlayer.currentTime = Math.max(0, liveEdge - 0.25);
+        didInitialLiveSeek = true;
+    } catch (e) {}
+}
+
+function candidateToPath(candidate) {
+    if (!candidate) return '';
+    try {
+        const parsed = new URL(candidate, window.location.origin);
+        return parsed.pathname;
+    } catch (error) {
+        return ensureLeadingSlash(stripQuery(candidate));
+    }
+}
+
+function candidateToMount(candidate) {
+    return normalizeMountPath(candidateToPath(candidate));
+}
+
+function parseStreamUptime(source) {
+    const iso = source.stream_start_iso8601 || source.stream_start;
+    if (!iso) return null;
+    const parsed = Date.parse(iso);
+    if (Number.isNaN(parsed)) return null;
+    const seconds = Math.max(0, Math.floor((Date.now() - parsed) / 1000));
+    return formatHMS(seconds);
+}
+
+function parseStreamUptimeSeconds(source) {
+    const iso = source.stream_start_iso8601 || source.stream_start;
+    if (!iso) return null;
+    const parsed = Date.parse(iso);
+    if (Number.isNaN(parsed)) return null;
+    return Math.max(0, Math.floor((Date.now() - parsed) / 1000));
+}
+
+function getActiveSource() {
+    const status = playbackState.lastStatus;
+    if (!status || !status.icestats || !status.icestats.source) return null;
+    const sources = Array.isArray(status.icestats.source) ? status.icestats.source : [status.icestats.source];
+    if (!sources.length) return null;
+
+    const currentMount = candidateToMount(currentCandidate());
+    if (currentMount) {
+        const matched = sources.find((src) => normalizeMountPath(candidateToPath(src.listenurl || '')) === currentMount);
+        if (matched) return matched;
+    }
+
+    return sources[0];
+}
+
+function updateLiveStatusBadge() {
+    if (!liveStatusBadge) return;
+
+    liveStatusBadge.classList.remove('status-live', 'status-standby', 'status-offline');
+
+    const activeSource = getActiveSource();
+    if (activeSource) {
+        liveStatusBadge.textContent = 'Live Now';
+        liveStatusBadge.classList.add('status-live');
+        return;
+    }
+
+    if (liveNow) {
+        liveStatusBadge.textContent = 'Standby';
+        liveStatusBadge.classList.add('status-standby');
+        return;
+    }
+
+    liveStatusBadge.textContent = 'Offline';
+    liveStatusBadge.classList.add('status-offline');
+}
+
+function formatBool(value) {
+    return value ? 'Yes' : 'No';
+}
+
+function updateDebugPanel() {
+    if (!debugPanel) return;
+
+    const items = [];
+    const candidate = currentCandidate();
+    const delay = computeLiveDelay();
+    const range = getLiveRange();
+    const source = getActiveSource();
+    const icestats = playbackState.lastStatus ? playbackState.lastStatus.icestats : null;
+
+    const candidateHtml = candidate ? escapeHtml(candidate) : '—';
+    items.push(`<div class="debug-item"><span>Stream Candidate</span><div class="debug-value">${candidateHtml}</div></div>`);
+
+    if (audioPlayer) {
+        const readyDesc = `${describeReadyState(audioPlayer.readyState)} (${audioPlayer.readyState})`;
+        const networkDesc = `${describeNetworkState(audioPlayer.networkState)} (${audioPlayer.networkState})`;
+        const currentTime = Number.isFinite(audioPlayer.currentTime) ? `${audioPlayer.currentTime.toFixed(2)}s` : 'n/a';
+        const duration = Number.isFinite(audioPlayer.duration) ? `${audioPlayer.duration.toFixed(2)}s` : '∞';
+
+        items.push(`<div class="debug-item"><span>Ready State</span><div class="debug-value">${escapeHtml(readyDesc)}</div></div>`);
+        items.push(`<div class="debug-item"><span>Network State</span><div class="debug-value">${escapeHtml(networkDesc)}</div></div>`);
+        items.push(`<div class="debug-item"><span>Current Time</span><div class="debug-value">${escapeHtml(currentTime)}</div></div>`);
+        items.push(`<div class="debug-item"><span>Duration</span><div class="debug-value">${escapeHtml(duration)}</div></div>`);
+    }
+
+    items.push(`<div class="debug-item"><span>Buffered Range</span><div class="debug-value">${escapeHtml(formatRange(range))}</div></div>`);
+    const delayText = delay == null ? 'n/a' : `${delay.toFixed(2)}s`;
+    items.push(`<div class="debug-item"><span>Estimated Delay</span><div class="debug-value">${escapeHtml(delayText)}</div></div>`);
+
+    const catchupStatus = liveCatchupHandle ? `active (${liveCatchupAttempts})` : `idle (${liveCatchupAttempts})`;
+    items.push(`<div class="debug-item"><span>Catch-up Loop</span><div class="debug-value">${escapeHtml(catchupStatus)}</div></div>`);
+
+    items.push(`<div class="debug-item"><span>Live Window</span><div class="debug-value">${escapeHtml(formatBool(liveNow))}</div></div>`);
+
+    if (source) {
+        const mount = candidateToMount(source.listenurl || '') || source.listenurl || '—';
+        const listeners = source.listeners !== undefined ? source.listeners : 'n/a';
+        const bitrate = source.bitrate ? `${source.bitrate} kbps` : 'n/a';
+        const uptime = parseStreamUptime(source) || 'n/a';
+
+        items.push(`<div class="debug-item"><span>Active Mount</span><div class="debug-value">${escapeHtml(mount)}</div></div>`);
+        items.push(`<div class="debug-item"><span>Listeners</span><div class="debug-value">${escapeHtml(listeners)}</div></div>`);
+        items.push(`<div class="debug-item"><span>Bitrate</span><div class="debug-value">${escapeHtml(bitrate)}</div></div>`);
+        items.push(`<div class="debug-item"><span>Source Uptime</span><div class="debug-value">${escapeHtml(uptime)}</div></div>`);
+    }
+
+    if (icestats) {
+        if (icestats.server_id) {
+            items.push(`<div class="debug-item"><span>Icecast Server</span><div class="debug-value">${escapeHtml(icestats.server_id)}</div></div>`);
+        }
+        if (icestats.server_start_iso8601) {
+            items.push(`<div class="debug-item"><span>Server Start</span><div class="debug-value">${escapeHtml(icestats.server_start_iso8601)}</div></div>`);
+        }
+        const sourceCount = Array.isArray(icestats.source) ? icestats.source.length : icestats.source ? 1 : 0;
+        items.push(`<div class="debug-item"><span>Mount Count</span><div class="debug-value">${escapeHtml(sourceCount)}</div></div>`);
+    }
+
+    if (items.length === 0) {
+        debugPanel.innerHTML = '<p class="debug-note">No debug information available yet.</p>';
+    } else {
+        debugPanel.innerHTML = items.join('');
+    }
+}
+
+function updateLiveTimerLabel() {
+    const delay = computeLiveDelay();
+    const source = getActiveSource();
+    const uptimeSeconds = source ? parseStreamUptimeSeconds(source) : null;
+    const uptime = uptimeSeconds != null ? formatHMS(uptimeSeconds) : null;
+
+    updateDebugPanel();
+
+    if (audioPlayer.paused) {
+        liveTimer.innerText = uptime ? `Live: paused (uptime ${uptime})` : 'Live: ready';
+        return;
+    }
+
+    const livePosEl = document.getElementById('live-position');
+    if (uptimeSeconds == null) {
+        // No uptime available, fallback to current behaviour
+        if (delay == null) {
+            liveTimer.innerText = 'Live: playing';
+            if (livePosEl) livePosEl.innerText = '—';
+            return;
+        }
+        const delayText = delay <= LIVE_EDGE_TOLERANCE ? 'Live' : `Live: ${formatMinutesSeconds(delay)} behind`;
+        liveTimer.innerText = delayText;
+        if (livePosEl) livePosEl.innerText = '—';
+        return;
+    }
+
+    // Compute current listening position within the live uptime window
+    const d = Math.max(0, Number.isFinite(delay) ? delay : 0);
+    const listeningAt = Math.max(0, uptimeSeconds - d);
+    const listeningText = formatHMS(listeningAt);
+    const behindText = d <= LIVE_EDGE_TOLERANCE ? 'on latest' : `${formatMinutesSeconds(d)} behind`;
+    liveTimer.innerText = `Listening at ${listeningText} of ${uptime} (${behindText})`;
+    if (livePosEl) livePosEl.innerText = `${listeningText} / ${uptime}`;
+    const goLiveBtn = document.getElementById('go-live-btn');
+    if (goLiveBtn) {
+        goLiveBtn.style.display = d > 1.0 ? 'inline-flex' : 'none';
+    }
+}
+
+// Live timer interval removed; UI updates on timeupdate/progress
+
+function parseStreamInput(raw) {
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    try {
+        const url = new URL(trimmed, window.location.origin);
+        return {
+            origin: url.origin === window.location.origin ? '' : url.origin,
+            path: stripQuery(url.pathname)
+        };
+    } catch (error) {
+        return {
+            origin: '',
+            path: stripQuery(ensureLeadingSlash(trimmed))
+        };
+    }
+}
+
+function buildStreamCandidates(rawParam, derivedBase) {
+    const parsed = parseStreamInput(rawParam);
+    const pathList = [];
+    const originSet = new Set(['', window.location.origin]);
+
+    if (parsed) {
+        if (parsed.origin) {
+            originSet.add(parsed.origin);
+        }
+        if (parsed.path) {
+            // If legacy channel path and we have a derived mount, prefer derived and drop legacy
+            const legacyChannel = /^\/channel\d+(?:\.[a-z0-9]+)?$/i.test(stripQuery(parsed.path));
+            if (!(legacyChannel && derivedBase)) {
+                pathList.push(parsed.path);
+            }
+        }
+    }
+
+    if (derivedBase) {
+        pathList.push(derivedBase);
+    }
+
+    // Normalize and order so /icecast/... variants come first
+    const seen = new Set();
+    const normalizedPaths = [];
+    pathList.forEach((path) => {
+        if (!path) return;
+        const sanitized = stripExtension(stripQuery(ensureLeadingSlash(path)));
+        if (!sanitized) return;
+        const primary = sanitized.startsWith('/icecast/') ? sanitized : `/icecast${sanitized}`;
+        const fallback = sanitized.startsWith('/icecast/') ? sanitized.replace(/^\/icecast\//, '/') : sanitized;
+        [primary, fallback].forEach(p => {
+            if (!seen.has(p)) { normalizedPaths.push(p); seen.add(p); }
+        });
+    });
+
+    const extensions = ['.mp3'];
+    const candidates = new Set();
+
+    originSet.forEach((origin) => {
+        normalizedPaths.forEach((path) => {
+            const base = stripExtension(path);
+            extensions.forEach((ext) => {
+                const candidate = origin ? `${origin}${base}${ext}` : `${base}${ext}`;
+                if (candidate) {
+                    candidates.add(candidate);
+                }
+            });
+        });
+    });
+
+    return Array.from(candidates);
+}
+
+function setStreamCandidates(candidates) {
+    playbackState.candidates = candidates;
+    playbackState.currentIndex = 0;
+    audioPlayer.dataset.streamCandidates = JSON.stringify(candidates);
+    updateDebugPanel();
+}
+
+function currentCandidate() {
+    return playbackState.candidates[playbackState.currentIndex] || null;
+}
+
+function advanceCandidate() {
+    if (playbackState.currentIndex + 1 >= playbackState.candidates.length) {
+        return false;
+    }
+    playbackState.currentIndex += 1;
+    return true;
+}
+
+function applyCurrentCandidate({ autoPlay = false, reason = '' } = {}) {
+    const candidate = currentCandidate();
+    if (!candidate) {
+        console.warn('No live stream candidate available.');
+        return;
+    }
+
+    const liveUrl = buildLiveStreamUrl(candidate);
+    const wasPlaying = !audioPlayer.paused && !audioPlayer.ended;
+
+    audioPlayer.dataset.activeStream = candidate;
+    audioPlayer.src = liveUrl;
+    audioPlayer.load();
+    resetLiveCatchup();
+
+    const startCatchup = () => {
+        if (!AUTO_CATCHUP_ENABLED) return;
+        jumpToLiveEdge(true);
+        scheduleLiveCatchup(false);
+    };
+
+    const playIfNeeded = () => {
+        if (autoPlay || wasPlaying) {
+            audioPlayer.play().then(() => {
+                startCatchup();
+            }).catch((error) => {
+                console.error('Audio play failed:', error);
+            });
+        } else {
+            startCatchup();
+        }
+    };
+
+    if (audioPlayer.readyState >= HTMLMediaElement.HAVE_METADATA) {
+        ensureAtLiveEdgeOnce();
+        playIfNeeded();
+    } else {
+        const onLoaded = () => {
+            ensureAtLiveEdgeOnce();
+            playIfNeeded();
+            audioPlayer.removeEventListener('loadedmetadata', onLoaded);
+        };
+        audioPlayer.addEventListener('loadedmetadata', onLoaded);
+    }
+
+    // Fallback: one-time try after first progress/timeupdate if metadata path was too early
+    const onceTry = () => { ensureAtLiveEdgeOnce(); audioPlayer.removeEventListener('timeupdate', onceTry); audioPlayer.removeEventListener('progress', onceTry); };
+    audioPlayer.addEventListener('timeupdate', onceTry);
+    audioPlayer.addEventListener('progress', onceTry);
+
+    if (reason) {
+        console.info(`Updated stream (${reason}):`, candidate);
+    }
+
+    updateDebugPanel();
+}
+
+function handleStreamError(context) {
+    console.warn(`Audio issue detected (${context}).`);
+    const sameMountRetry = () => applyCurrentCandidate({ autoPlay: true, reason: context });
+    if (context === 'ended' || context === 'stalled' || context === 'emptied') {
+        // For live MP3, connections can close; reload same candidate first
+        sameMountRetry();
+    } else if (context === 'error') {
+        if (advanceCandidate()) {
+            applyCurrentCandidate({ autoPlay: true, reason: context });
+        } else {
+            liveTimer.innerText = 'Live stream unavailable. Retrying...';
+            setTimeout(sameMountRetry, 3000);
+        }
+    } else {
+        // Generic fallback
+        if (!audioPlayer.paused) setTimeout(sameMountRetry, 1000);
+    }
+    updateDebugPanel();
+}
+
+// Status polling removed to avoid extra timers; status is inferred from playback
+
+function reconcileCandidateWithStatus() {
+    const source = getActiveSource();
+    if (!source) return;
+
+    const activeMount = normalizeMountPath(candidateToPath(source.listenurl || ''));
+    if (!activeMount) return;
+
+    const currentMount = candidateToMount(currentCandidate());
+    if (activeMount === currentMount) return;
+
+    const matchIndex = playbackState.candidates.findIndex(
+        (candidate) => candidateToMount(candidate) === activeMount
+    );
+
+    if (matchIndex !== -1 && matchIndex !== playbackState.currentIndex) {
+        playbackState.currentIndex = matchIndex;
+        if (!audioPlayer.paused) {
+            applyCurrentCandidate({ autoPlay: true, reason: 'status-sync' });
+        }
+    }
+}
+
+async function validateSession() {
+    try {
+        const storedLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
+        const storedSubscribed = sessionStorage.getItem('isSubscribed') === 'true';
+
+        if (storedLoggedIn && storedSubscribed) {
+            showPlayer();
+            return true;
+        }
+
+        const response = await fetch('/api/user-info', { credentials: 'include', cache: 'no-store' });
+        const data = await response.json();
+
+        if (!data.success || !data.subscribed) {
+            showError();
+            return false;
+        }
+
+        sessionStorage.setItem('isLoggedIn', 'true');
+        sessionStorage.setItem('isSubscribed', 'true');
+        sessionStorage.setItem('userEmail', data.email || '');
+
+        showPlayer();
+        return true;
+    } catch (error) {
+        console.error('Session validation failed:', error);
+        showError();
+        return false;
+    }
+}
+
+function showError() {
+    sessionError.hidden = false;
+    authorizedSections.forEach((section) => {
+        section.hidden = true;
+    });
+    resetLiveCatchup();
+    if (debugPanel) {
+        debugPanel.innerHTML = '<p class="debug-note">Sign in to view live debug metrics.</p>';
+    }
+}
+
+function showPlayer() {
+    sessionError.hidden = true;
+    authorizedSections.forEach((section) => {
+        section.hidden = false;
+    });
+    resetLiveCatchup();
+    updateDebugPanel();
+}
+
+function parseCsvRow(row) {
+    return row.split(',').map((col) => col.replace(/^"|"$/g, '').trim());
+}
+
+function isNumericFrequency(value) {
+    return typeof value === 'string' && /^\d+(\.\d+)?$/.test(value.trim());
+}
+
+async function checkLiveEvent() {
+    try {
+        const res = await fetch(`/events/events.csv?ts=${Date.now()}`);
+        const text = await res.text();
+        const rows = text.split('\n').slice(1).filter((r) => r.trim() !== '');
+        const now = moment.tz('America/New_York');
+
+        liveNow = rows.some((r) => {
+            const cols = r.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g)?.map((c) => c.replace(/^"|"$/g, '').trim());
+            if (!cols || cols.length < 5) return false;
+
+            const date = cols[3];
+            const time = cols[4];
+            const evtStart = moment.tz(`${date} ${time}`, 'YYYY-MM-DD HH:mm', 'America/New_York');
+            const evtEnd = evtStart.clone().add(3, 'hours');
+            return now.isBetween(evtStart, evtEnd);
+        });
+    } catch (err) {
+        console.error('Live event check failed', err);
+        liveNow = false;
+    } finally {
+        updateLiveStatusBadge();
+        updateDebugPanel();
+    }
+}
+
+async function loadDriverInfo() {
+    if (!(await validateSession())) return;
+
+    await checkLiveEvent();
+
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const driverNumberParam = params.get('number');
+        const driverNameParam = params.get('name');
+        const hometownParam = params.get('hometown');
+        const freqParam = params.get('freq');
+        const streamParam = params.get('stream');
+
+        if (driverNameParam) {
+            document.title = `${driverNameParam} | Race Live Audio`;
+        }
+
+        const response = await fetch(`/drivers/drivers.csv?ts=${Date.now()}`, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`drivers.csv ${response.status}`);
+        const text = await response.text();
+        const rows = text.split(/\r?\n/).slice(1).filter((row) => row.trim() !== '');
+
+        const parsedRows = rows.map(parseCsvRow);
+        let matchedRow = null;
+
+        parsedRows.forEach((row) => {
+            const csvNumber = row[0];
+            const csvName = row[1];
+            const isMatch = csvNumber === driverNumberParam && (!driverNameParam || csvName === driverNameParam);
+
+            if (isMatch) {
+                matchedRow = row;
+            }
+        });
+
+        if (!matchedRow) {
+            showError();
+            return;
+        }
+
+        const [driverNumber, driverName, state, imageUrl, frequencyHz] = matchedRow;
+        const driverClass = (matchedRow[5] || '').toUpperCase();
+
+        document.getElementById('driver-name').innerText = driverName || driverNameParam || 'Live Driver';
+        const hometown = hometownParam || (state || 'USA');
+        const infoParts = [];
+        if (hometown) infoParts.push(`🏡 ${hometown}`);
+        if (driverClass) infoParts.push(`• ${driverClass}`);
+        document.getElementById('driver-info').innerText = infoParts.length ? infoParts.join(' ') : '🏡 Hometown unavailable';
+
+        const frequencySource = freqParam || frequencyHz;
+        if (frequencySource) {
+            const numeric = Number(frequencySource);
+            const freqText = Number.isFinite(numeric)
+                ? `${(numeric / 1e6).toFixed(4)} MHz`
+                : String(frequencySource);
+            document.getElementById('driver-frequency').innerText = freqText;
+        } else {
+            document.getElementById('driver-frequency').innerText = 'Unknown';
+        }
+
+        const driverClassEl = document.getElementById('driver-class');
+        if (driverClassEl) driverClassEl.innerText = driverClass || '—';
+
+        if (lastUpdatedEl && window.moment) {
+            lastUpdatedEl.innerText = moment.tz('America/New_York').format('MMM D, YYYY h:mm A z');
+        }
+
+        const visualDiv = document.getElementById('driver-visual');
+        visualDiv.innerHTML = '';
+
+        if (imageUrl) {
+            const logoImg = document.createElement('img');
+            logoImg.src = imageUrl;
+            logoImg.alt = `#${driverNumber || driverNumberParam || '?'} logo`;
+            logoImg.className = 'driver-logo';
+            logoImg.onload = () => {
+                visualDiv.innerHTML = '';
+                visualDiv.appendChild(logoImg);
+            };
+            logoImg.onerror = () => {
+                visualDiv.innerHTML = `<div class="driver-fallback-number">#${driverNumber || driverNumberParam || '?'}</div>`;
+            };
+            visualDiv.appendChild(logoImg);
+        } else {
+            visualDiv.innerHTML = `<div class="driver-fallback-number">#${driverNumber || driverNumberParam || '?'}</div>`;
+        }
+
+        // Build mount slug to match remote RunStreamer.sh (class-number-name)
+        const classSlug = slugify(driverClass, 'class');
+        const numberSlug = slugify(driverNumber, 'na');
+        const nameSlug = slugify(driverName || driverNumber, 'driver');
+        const slugBase = `/${classSlug}-${numberSlug}-${nameSlug}`;
+        const candidates = buildStreamCandidates(streamParam, slugBase);
+        setStreamCandidates(candidates);
+
+        if (!candidates.length) {
+            liveTimer.innerText = 'No live stream configured.';
+            return;
+        }
+
+        liveTimer.innerText = 'Live: loading';
+        applyCurrentCandidate({ autoPlay: false, reason: 'initial-load' });
+        updateDebugPanel();
+    } catch (error) {
+        console.error('Failed to load driver info:', error);
+        liveTimer.innerText = 'Unable to load live stream.';
+        updateDebugPanel();
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (!audioPlayer) {
+        console.error('Player markup missing.');
+        return;
+    }
+
+    audioPlayer.addEventListener('loadedmetadata', () => {
+        // no auto-catchup on load
+    });
+
+    audioPlayer.addEventListener('canplay', () => {
+        // no auto-catchup on canplay
+    });
+
+    audioPlayer.addEventListener('playing', () => {
+        // no auto-catchup during playback
+        updateLiveTimerLabel();
+    });
+
+    audioPlayer.addEventListener('pause', () => {
+        resetLiveCatchup();
+        updateLiveTimerLabel();
+    });
+
+    audioPlayer.addEventListener('timeupdate', () => {
+        updateLiveTimerLabel();
+        applyCatchupSpeed();
+        playbackState.lastProgressAt = Date.now();
+        playbackState.lastCurrentTime = audioPlayer.currentTime || 0;
+    });
+
+    audioPlayer.addEventListener('progress', () => {
+        updateLiveTimerLabel();
+        playbackState.lastProgressAt = Date.now();
+    });
+
+    ['stalled', 'emptied'].forEach((eventName) => {
+        audioPlayer.addEventListener(eventName, () => {
+            if (!audioPlayer.paused) {
+                resetLiveCatchup();
+                handleStreamError(eventName);
+            }
+        });
+    });
+
+    audioPlayer.addEventListener('ended', () => {
+        resetLiveCatchup();
+        handleStreamError('ended');
+    });
+
+    audioPlayer.addEventListener('waiting', () => {
+        // allow brief buffering naturally
+    });
+
+    audioPlayer.addEventListener('error', () => {
+        resetLiveCatchup();
+        handleStreamError('error');
+    });
+
+    window.addEventListener('beforeunload', () => {
+        resetLiveCatchup();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        // keep current position on visibility change
+    });
+
+    const goLiveBtn = document.getElementById('go-live-btn');
+    if (goLiveBtn) {
+        goLiveBtn.addEventListener('click', () => {
+            const candidate = currentCandidate();
+            if (!candidate) return;
+            playbackState.lastHardResyncAt = 0; // bypass cooldown
+            const liveUrl = buildLiveStreamUrl(candidate);
+            const wasPlaying = !audioPlayer.paused && !audioPlayer.ended;
+            audioPlayer.src = liveUrl;
+            audioPlayer.load();
+            if (wasPlaying) { audioPlayer.play().catch(() => {}); }
+        });
+    }
+
+    loadDriverInfo();
+});
+</script>
+
+<div id="footer-container"></div>
+<script src="../static/js/load-footer.js"></script>
+</body>
+</html>

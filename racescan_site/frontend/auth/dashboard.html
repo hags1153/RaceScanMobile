@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RaceScan - Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/x-icon" href="/static/images/RaceScan.ico">
+</head>
+<body>
+<script src="../static/js/load-navbar.js"></script>
+<div id="navbar-container"></div>
+
+<div class="container">
+    <!-- ✅ Single Welcome Message (This will be updated dynamically) -->
+    <h1 id="welcome-message">Loading...</h1>
+
+    <p>This is your personalized dashboard.</p>
+    <a href="/auth/account.html">Go to Account Settings</a>
+</div>
+
+
+<!-- ✅ Fetch User Session and Update the Welcome Message -->
+<script>
+    async function checkSession() {
+        try {
+            const response = await fetch('/api/session');
+            const data = await response.json();
+            console.log("🔹 Session Check:", data);
+
+            if (!data.loggedIn) {
+                console.log("❌ No active session. Redirecting to login.");
+                window.location.replace('/auth/login.html');
+            } else {
+                console.log("✅ Session active:", data);
+                document.getElementById('welcome-message').textContent = `Welcome, ${data.firstName}!`;
+            }
+        } catch (error) {
+            console.error("❌ Error checking session:", error);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', checkSession);
+</script>
+<div id="footer-container"></div>
+<script src="../static/js/load-footer.js"></script>
+
+</body>
+
+</html>

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verification Failed - RaceScan</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .verification-container {
+            text-align: center;
+            margin-top: 50px;
+        }
+        .verification-container a {
+            color: #ff4d4d;
+        }
+    </style>
+</head>
+<body>
+    <div id="navbar"></div>
+    <div class="verification-container">
+        <h1>Email Verification Failed</h1>
+        <p>The verification link is invalid or expired.</p>
+        <p>
+            <a href="#" id="resend-link">Resend verification email</a> or
+            <a href="/auth/login.html">Return to login</a>
+        </p>
+    </div>
+
+    <script>
+        document.getElementById('navbar').innerHTML =
+            '<object type="text/html" data="/navbar.html" style="width: 100%;"></object>';
+
+        document.getElementById('resend-link').addEventListener('click', async (e) => {
+            e.preventDefault();
+            const email = new URLSearchParams(window.location.search).get('email');
+            try {
+                const response = await fetch('/resend-verification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const data = await response.json();
+                alert(data.message || 'Verification email resent');
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to resend verification email');
+            }
+        });
+    </script>
+</body>
+</html>

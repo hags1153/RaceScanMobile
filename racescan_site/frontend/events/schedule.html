@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Race Schedule - RaceScan</title>
+  <link rel="stylesheet" href="../static/css/style.css">
+  <link rel="stylesheet" href="../static/css/schedule.css">
+  <link rel="icon" type="image/x-icon" href="/static/images/RaceScan.ico">
+  <style>
+    .schedule-list { list-style: none; padding: 0; margin: 16px 0 0; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; overflow: hidden; }
+    .schedule-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1.2fr; gap: 12px; padding: 12px 14px; align-items: center; background: rgba(255,255,255,0.03); }
+    .schedule-row + .schedule-row { border-top: 1px solid rgba(255,255,255,0.08); }
+    .schedule-row:nth-child(even) { background: rgba(255,255,255,0.04); }
+    .schedule-row.header { background: rgba(255,255,255,0.06); font-size: 0.78rem; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,0.8); }
+    .schedule-row:not(.header):hover { background: rgba(255,255,255,0.08); transition: background 0.2s ease; }
+    .event-name { font-weight: 600; }
+    .event-link { color: #fff; text-decoration: none; }
+    .event-link.live { color: #ffb3b3; text-decoration: underline; }
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 0.72rem; letter-spacing: 0.4px; text-transform: uppercase; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); }
+    .badge-live { background: rgba(255, 77, 77, 0.25); border-color: rgba(255,77,77,0.45); color: #ff9c9c; margin-right: 6px; }
+    .badge-lmsc { background: rgba(77, 163, 255, 0.22); border-color: rgba(77,163,255,0.45); color: #b9dbff; }
+    .badge-plm  { background: rgba(255, 184, 77, 0.22); border-color: rgba(255,184,77,0.45); color: #ffe0b3; }
+    .badge-smt  { background: rgba(114, 137, 218, 0.22); border-color: rgba(114,137,218,0.45); color: #d7ddff; }
+    .muted { color: rgba(255,255,255,0.75); }
+    @media (max-width: 900px) { .schedule-row { grid-template-columns: 1.6fr 0.9fr 0.9fr 1fr; } .col-location { display:none; } }
+  </style>
+</head>
+<body>
+<div id="navbar-container"></div>
+<script src="../static/js/load-navbar.js"></script>
+
+<div class="container">
+  <h1>Race Schedule</h1>
+  <p style="font-style: italic; font-size: 14px; margin-top: -10px; color: #ccc;">
+    *All times are listed in Eastern Time (ET)
+  </p>
+  <div class="filter-container">
+    <label for="event-filter">Filter by Event Type:</label>
+    <select id="event-filter" class="styled-dropdown">
+      <option value="ALL">All Events</option>
+    </select>
+  </div>
+
+  <div id="events-container">
+    <p>Loading schedule...</p>
+  </div>
+</div>
+
+<!-- moment + timezone -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment-timezone/0.5.43/moment-timezone-with-data.min.js"></script>
+
+<script>
+function generateTrackImagePath(trackName) {
+  // Remove type suffix (LMSC / PLM / SMT) and extra words
+  const baseName = trackName
+    .replace(/-?\s*(LMSC|PLM|SMT)$/i, '')
+    .replace(/Motor Speedway|Speedway|Raceway/gi, '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .replace(/\s+/g, '');
+
+  return `/static/images/track_images/${baseName}.png`;
+}
+
+async function fetchSchedule() {
+  try {
+    const response = await fetch('/events/events.csv?ts=' + Date.now());
+    const text = await response.text();
+    const lines = text.split(/\r?\n/);
+    if (!lines.length) { document.getElementById('events-container').innerHTML = '<p>No events found.</p>'; return; }
+    const header = (lines[0] || '').split(',').map(h => h.trim().toLowerCase());
+    const rows = lines.slice(1).filter((row) => row.trim());
+
+    const now = moment().tz("America/New_York");
+    const filterSelect = document.getElementById("event-filter");
+
+    // Build normalized event objects; if class missing, derive PLM and LMSC (LMSC = PLM + 2h)
+    const events = [];
+    const classSet = new Set();
+    rows.forEach(row => {
+      const cols = row.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g)?.map(c => c.replace(/^"|"$/g, '').trim());
+      if (!cols || cols.length < 7) return;
+
+      const idx = {
+        raceId: header.indexOf('raceid'),
+        track: header.indexOf('track'),
+        location: header.indexOf('location'),
+        date: header.indexOf('date'),
+        time: header.indexOf('time'),
+        address: header.indexOf('address'),
+        klass: header.indexOf('class')
+      };
+
+      const raceId = idx.raceId >= 0 ? cols[idx.raceId] : cols[0];
+      const track = idx.track >= 0 ? cols[idx.track] : cols[1];
+      const location = idx.location >= 0 ? cols[idx.location] : cols[2];
+      const date = idx.date >= 0 ? cols[idx.date] : cols[3];
+      const time = idx.time >= 0 ? cols[idx.time] : cols[4];
+      const address = idx.address >= 0 ? cols[idx.address] : cols[5];
+      let klass = idx.klass >= 0 ? (cols[idx.klass] || '').toUpperCase() : '';
+      if (!klass) {
+        if (/(^|\s|-)LMSC(\s|$)/i.test(track)) klass = 'LMSC';
+        else if (/(^|\s|-)PLM(\s|$)/i.test(track)) klass = 'PLM';
+        else if (/(^|\s|-)SMT(\s|$)/i.test(track)) klass = 'SMT';
+      }
+
+      const baseStart = moment.tz(`${date} ${time}`, 'YYYY-MM-DD HH:mm', 'America/New_York');
+      if (!klass) {
+        // fallback: synthesize both
+        events.push({ raceId: `${raceId}-PLM`, klass: 'PLM', track: `${track}`, location, start: baseStart.clone(), address });
+        events.push({ raceId: `${raceId}-LMSC`, klass: 'LMSC', track: `${track} - LMSC`, location, start: baseStart.clone().add(2, 'hours'), address });
+      } else {
+        events.push({ raceId, klass, track, location, start: baseStart, address });
+      }
+      if (klass) classSet.add(klass);
+    });
+
+    // Sort chronologically
+    events.sort((a, b) => a.start.valueOf() - b.start.valueOf());
+
+    // Populate filter options dynamically (keep current selection if possible)
+    const prev = filterSelect.value || 'ALL';
+    const classes = Array.from(classSet).sort();
+    filterSelect.innerHTML = '<option value="ALL">All Events</option>' + classes.map(c => `<option value="${c}">${c}</option>`).join('');
+    filterSelect.value = classes.includes(prev) ? prev : 'ALL';
+
+    let scheduleHTML = `<h2>Upcoming Races</h2>`;
+    scheduleHTML += `<ul class="schedule-list">`;
+    scheduleHTML += `
+      <li class="schedule-row header">
+        <div>Event</div>
+        <div>Date</div>
+        <div>Time (ET)</div>
+        <div>Class</div>
+        <div class="col-location">Location</div>
+      </li>`;
+
+    const filterType = filterSelect.value;
+    events.forEach(evt => {
+      if (filterType !== 'ALL' && evt.klass !== filterType) return;
+      const isActive = moment().isBetween(evt.start.clone().subtract(10, 'minutes'), evt.start.clone().add(7, 'hours'));
+      const dateStr = evt.start.format('YYYY-MM-DD');
+      const timeStr = evt.start.format('h:mm A z');
+      const classChip = `<span class=\"badge ${evt.klass === 'LMSC' ? 'badge-lmsc' : (evt.klass === 'PLM' ? 'badge-plm' : (evt.klass === 'SMT' ? 'badge-smt' : ''))}\">${evt.klass}</span>`;
+      const nameCell = isActive
+        ? `<a class=\"event-link live\" href=\"/events/live.html\" title=\"Go to Live\">${evt.track}</a>`
+        : `<span class=\"event-name\">${evt.track}</span>`;
+      scheduleHTML += `
+        <li class=\"schedule-row\">\n          <div>${nameCell}</div>\n          <div class=\"muted\">${dateStr}</div>\n          <div class=\"muted\">${timeStr}</div>\n          <div>${isActive ? '<span class=\\"badge badge-live\\">Live</span>' : ''}${classChip}</div>\n          <div class=\"col-location muted\">${evt.location}</div>\n        </li>`;
+    });
+
+    scheduleHTML += `</ul>`;
+    document.getElementById('events-container').innerHTML = scheduleHTML;
+  } catch (err) {
+    console.error('Error loading schedule:', err);
+    document.getElementById('events-container').innerHTML = '<p>Error loading schedule.</p>';
+  }
+}
+
+document.getElementById("event-filter").addEventListener("change", fetchSchedule);
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("event-filter").value = "ALL";
+  fetchSchedule();
+});
+</script>
+
+<script src="../static/js/slideshow.js"></script>
+<div id="footer-container"></div>
+<script src="../static/js/load-footer.js"></script>
+</body>
+</html>

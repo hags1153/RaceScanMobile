@@ -1,0 +1,161 @@
+@import url('style.css');
+@import url('hero.css');
+
+
+/* Page Container */
+.container {
+    text-align: center;
+    padding: 20px;
+}
+
+.event-item:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 12px rgba(255, 0, 0, 0.5);
+}
+
+/* Event Details */
+.event-details {
+    margin-top: 12px;
+    text-align: center;
+}
+
+/* Clickable Track Name */
+.event-details h3 a {
+    color: #d4d3cf;
+    text-decoration: none;
+    font-size: 18px;
+    font-weight: bold;
+    transition: color 0.3s;
+}
+
+.event-details h3 a:hover {
+    color: #ffffff;
+    text-decoration: underline;
+}
+
+/* Location, Address */
+.event-details p {
+    font-size: 15px;
+    color: #ddd;
+    margin: 5px 0;
+}
+
+/* Bold & Bigger Date & Time */
+.event-date {
+    font-size: 18px;
+    font-weight: bold;
+    color: #ffffff;
+    margin-top: 8px;
+}
+
+/* Track Info Button */
+.track-info {
+    display: inline-block;
+    padding: 8px 14px;
+    background: #ff4d4d;
+    color: white;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: bold;
+    transition: background 0.3s;
+    margin-top: 8px;
+}
+
+.track-info:hover {
+    background: #d43d3d;
+}
+
+/* Active Event (Border Highlight) */
+.active-event {
+    border: 3px solid #d4d3cf;
+    box-shadow: 0 0 15px #d4d3cf;
+}
+
+/* Live Now Button */
+.live-now {
+    display: inline-block;
+    padding: 10px 16px;
+    background: #ff0000;
+    color: white;
+    border-radius: 6px;
+    text-decoration: none;
+    margin-top: 10px;
+    font-weight: bold;
+    transition: background 0.3s;
+}
+
+.live-now:hover {
+    background: #cc0000;
+}
+
+/* Filter Section */
+.filter-container {
+    margin: 20px auto;
+    text-align: center;
+}
+
+/* Dropdown Styling */
+.styled-dropdown {
+    font-size: 16px;
+    padding: 12px 18px;
+    border-radius: 6px;
+    background-color: #333333;
+    color: white;
+    border: 2px solid #d4d3cf;
+    outline: none;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+.styled-dropdown:hover {
+    background-color: #444444;
+}
+
+.styled-dropdown:focus {
+    border-color: #ff4d4d;
+}
+
+/* Individual Event Card */
+.event-item {
+    background: #292929;
+    padding: 15px;
+    border-radius: 10px;
+    text-align: center;
+    width: 250px; /* smaller width for 3 columns */
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.event-img {
+    width: 100%;
+    height: 140px; /* slightly smaller height */
+    object-fit: contain; /* ensures logo fits without distortion */
+    border-radius: 6px;
+}
+
+/* Event List container (no change needed, just reminder) */
+.event-list {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 16px; /* tighter gap for more compact look */
+    margin-top: 20px;
+}
+
+/* Adjust for Mobile */
+@media (max-width: 900px) {
+    .event-item {
+        width: 45%; /* 2 columns on medium screens */
+    }
+}
+
+@media (max-width: 600px) {
+    .event-list {
+        gap: 12px;
+    }
+}
+
+

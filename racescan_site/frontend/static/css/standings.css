@@ -1,0 +1,115 @@
+@import url('style.css');
+
+/* 📌 Centered Table Container */
+.table-container {
+    max-width: 1100px;
+    margin: 40px auto;
+    padding: 15px;
+    background: #121212;
+    border-radius: 12px;
+    box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.5);
+    overflow-x: auto; /* Enables horizontal scrolling on small screens */
+}
+
+/* 📌 Standings Table */
+.standings-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    font-size: 1em;
+    text-align: center; /* Centers all table text */
+    border-radius: 5px;
+    overflow: hidden;
+    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* 📌 Table Header */
+.standings-table thead {
+    background: linear-gradient(90deg, #ffcc00, #ff9900);
+    color: black;
+    text-transform: uppercase;
+    font-weight: bold;
+}
+
+/* 📌 Table Header Cells */
+.standings-table th {
+    padding: 15px;
+    text-align: center;
+    font-size: 1.1em;
+    white-space: nowrap; /* ✅ Prevents headers from breaking into multiple lines */
+}
+
+/* 📌 Table Data Cells */
+.standings-table td {
+    padding: 15px;
+    border: 1px solid #2d2d2d;
+    border-bottom: 1px solid #2d2d2d;
+    font-size: 1em;
+    white-space: nowrap; /* ✅ Prevents text wrapping */
+}
+
+/* 📌 Alternate Row Colors for Readability */
+.standings-table tbody tr:nth-child(odd) {
+    background-color: #1c1c1c;
+}
+
+.standings-table tbody tr:nth-child(even) {
+    background-color: #292929;
+}
+
+/* 📌 Hover Effect */
+.standings-table tbody tr:hover {
+    background-color: #ff4d4d33;
+    transition: background 0.3s ease-in-out;
+}
+
+/* 📌 Driver Name Column */
+.driver-name {
+    display: flex;
+    align-items: center;
+    justify-content: center; /* ✅ Forces content to center horizontally */
+    gap: 12px;
+    text-align: center; /* ✅ Ensures text is centered */
+    width: 100%; /* ✅ Takes up full cell width */
+}
+
+/* 📌 Driver Image */
+.driver-name img {
+    border-radius: 50%;
+    width: 45px;
+    height: 45px;
+    object-fit: cover;
+    border: 2px solid #d4d3cf
+}
+
+/* 📌 Driver Name Text & Link Styling */
+.driver-name a {
+    color: white; /* ✅ Set driver names to white */
+    font-weight: bold;
+    text-align: center;
+    text-decoration: none;
+    transition: color 0.3s ease-in-out;
+}
+
+/* 📌 Hover Effect for Driver Names */
+.driver-name a:hover {
+    color: #d4d3cf /* ✅ Set hover effect to #ffcc00 */
+}
+
+/* 📌 Adjustments for Mobile View */
+@media (max-width: 768px) {
+    .table-container {
+        padding: 10px;
+    }
+
+    .standings-table th,
+    .standings-table td {
+        padding: 10px;
+        font-size: 1em;
+    }
+
+    .driver-name img {
+        width: 35px;
+        height: 35px;
+    }
+}
