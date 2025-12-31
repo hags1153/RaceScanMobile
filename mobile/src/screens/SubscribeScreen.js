@@ -19,6 +19,7 @@ export default function SubscribeScreen({ navigation, route }) {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loggedIn, setLoggedIn] = useState(false);
+  const [checkedAuth, setCheckedAuth] = useState(false);
 
   const returnTo = route?.params?.returnTo;
 
@@ -31,6 +32,7 @@ export default function SubscribeScreen({ navigation, route }) {
       } catch {
         setLoggedIn(false);
       }
+      setCheckedAuth(true);
     };
     load();
   }, []);
@@ -132,7 +134,7 @@ export default function SubscribeScreen({ navigation, route }) {
           {message ? <Text style={styles.success}>{message}</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
-          {!loggedIn && (
+          {checkedAuth && !loggedIn && (
             <TouchableOpacity onPress={() => navigation.navigate('Tabs', { screen: 'Login' })} activeOpacity={0.85}>
               <Text style={styles.link}>Log in to subscribe</Text>
             </TouchableOpacity>
