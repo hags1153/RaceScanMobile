@@ -103,7 +103,7 @@ export default function LoginScreen({ navigation }) {
               </TouchableOpacity>
               {message ? <Text style={styles.success}>{message}</Text> : null}
               {error ? <Text style={styles.error}>{error}</Text> : null}
-              <TouchableOpacity onPress={() => navigation.navigate('Signup')} activeOpacity={0.85}>
+              <TouchableOpacity onPress={() => navigation.navigate('PhoneEntry')} activeOpacity={0.85}>
                 <Text style={styles.link}>Don’t have an account? Sign up</Text>
               </TouchableOpacity>
             </View>
