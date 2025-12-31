@@ -408,41 +408,43 @@ export default function LiveScreen({ navigation, route }) {
                 <Text style={styles.infoLabel}>Class</Text>
                 <Text style={styles.infoValue}>{activeClass || '—'}</Text>
               </View>
-              {showPlayer ? (
-                <>
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Selected</Text>
-                    <Text style={styles.infoValue}>{currentDriver?.name || 'Tap a live driver'}</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[styles.listenBtn, (!streamUrl || !hasAccess) && styles.listenBtnDisabled]}
-                    onPress={hasAccess ? handleTogglePlayback : () => navigation.navigate('Tabs', { screen: 'Login' })}
-                    activeOpacity={streamUrl && hasAccess ? 0.9 : 1}
-                    disabled={!streamUrl && hasAccess}
-                  >
-                    <Ionicons name={playing ? 'pause' : 'play'} color="#fff" size={16} />
-                    <Text style={styles.listenText}>
-                      {!hasAccess ? 'Login to listen' : playing ? 'Pause' : 'Play'} stream
-                    </Text>
-                  </TouchableOpacity>
-              {streamUrl && (
+          {showPlayer ? (
+            <>
+              <View style={styles.selectedCard}>
+                <Text style={styles.selectedLabel}>Selected</Text>
+                <Text style={styles.selectedName}>{currentDriver?.name || 'Tap a live driver'}</Text>
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.listenBtn,
+                  (!streamUrl || !hasAccess) && styles.listenBtnDisabled,
+                  (!hasAccess && authState.loggedIn) && styles.listenBtnGhost
+                ]}
+                onPress={
+                  hasAccess
+                    ? handleTogglePlayback
+                    : authState.loggedIn
+                      ? () => navigation.navigate('Subscribe')
+                      : () => navigation.navigate('Tabs', { screen: 'Login' })
+                }
+                activeOpacity={streamUrl && hasAccess ? 0.9 : 0.9}
+                disabled={!streamUrl && hasAccess}
+              >
+                <Ionicons name={hasAccess ? (playing ? 'pause' : 'play') : 'lock-closed'} color="#fff" size={16} />
+                <Text style={styles.listenText}>
+                  {hasAccess ? (playing ? 'Pause' : 'Listen In') : (authState.loggedIn ? 'Subscribe to Listen' : 'Login to Listen')}
+                </Text>
+              </TouchableOpacity>
+              {streamUrl && hasAccess && (
                 <Text style={styles.notice}>
                   Status: {playStatus}{streamUrl ? ` • ${streamUrl.replace(API_BASE, '')}` : ''}
                 </Text>
               )}
-              {!hasAccess ? (
-                <TouchableOpacity onPress={() => navigation.navigate('Tabs', { screen: 'Login' })} activeOpacity={0.85}>
-                  <Text style={styles.notice}>Login and subscribe or use a day pass for this race to listen.</Text>
-                </TouchableOpacity>
-              ) : null}
               {!hasAccess && authState.loggedIn ? (
-                <TouchableOpacity
-                  style={[styles.listenBtn, styles.listenBtnGhost]}
-                  onPress={() => navigation.navigate('Subscribe')}
-                  activeOpacity={0.9}
-                >
-                  <Text style={styles.listenText}>Subscribe</Text>
-                </TouchableOpacity>
+                <Text style={styles.notice}>You need a subscription or day pass to listen.</Text>
+              ) : null}
+              {!hasAccess && !authState.loggedIn ? (
+                <Text style={styles.notice}>Login and subscribe or use a day pass for this race to listen.</Text>
               ) : null}
             </>
           ) : (
@@ -552,6 +554,26 @@ const styles = StyleSheet.create({
   notice: {
     marginTop: spacing.xs,
     color: colors.textSecondary
+  },
+  selectedCard: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border
+  },
+  selectedLabel: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
+  },
+  selectedName: {
+    color: colors.textPrimary,
+    fontSize: 18,
+    fontWeight: '800',
+    marginTop: 4
   },
   chips: {
     flexDirection: 'row',
