@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import Screen from '../components/Screen';
 import NavBar from '../components/NavBar';
 import { colors, spacing, radius } from '../theme';
@@ -47,6 +48,12 @@ export default function AccountScreen({ navigation }) {
   useEffect(() => {
     fetchData();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [])
+  );
 
   const handleLogout = async () => {
     try {
@@ -144,7 +151,7 @@ export default function AccountScreen({ navigation }) {
                 {!user.subscribed && (
                   <TouchableOpacity
                     style={styles.button}
-                    onPress={() => navigation.navigate('Subscribe', { returnTo: { stack: 'Tabs', params: { screen: 'AccountTab' } } })}
+                    onPress={() => navigation.navigate('Tabs', { screen: 'SubscribeTab', params: { returnTo: { stack: 'Tabs', params: { screen: 'AccountTab' } } } })}
                     activeOpacity={0.9}
                   >
                     <Text style={styles.buttonText}>Subscribe</Text>
