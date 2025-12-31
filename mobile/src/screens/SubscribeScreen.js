@@ -19,7 +19,6 @@ export default function SubscribeScreen({ navigation }) {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loggedIn, setLoggedIn] = useState(false);
-  const [paymentsAvailable, setPaymentsAvailable] = useState(true);
 
   useEffect(() => {
     const load = async () => {
@@ -29,13 +28,6 @@ export default function SubscribeScreen({ navigation }) {
         setLoggedIn(!!info?.success);
       } catch {
         setLoggedIn(false);
-      }
-      try {
-        const res = await fetch(`${API_BASE}/api/stripe/config`);
-        const cfg = await res.json();
-        setPaymentsAvailable(!!(cfg?.success && cfg.publishableKey));
-      } catch {
-        setPaymentsAvailable(false);
       }
     };
     load();
@@ -101,9 +93,6 @@ export default function SubscribeScreen({ navigation }) {
       >
         <ScrollView contentContainerStyle={styles.container}>
           <Text style={styles.heading}>Choose your plan</Text>
-          {!paymentsAvailable && (
-            <Text style={styles.error}>Payments are not available. Please try again later.</Text>
-          )}
 
           <View style={styles.cardRow}>
             <View style={[styles.planCard, styles.planPrimary]}>
@@ -111,9 +100,9 @@ export default function SubscribeScreen({ navigation }) {
               <Text style={styles.planPrice}>$8.99 / month</Text>
               <Text style={styles.planSubtitle}>Listen to all drivers, every event.</Text>
               <TouchableOpacity
-                style={[styles.button, (!paymentsAvailable || loading) && styles.buttonDisabled]}
+                style={[styles.button, loading && styles.buttonDisabled]}
                 onPress={handleSubscribe}
-                disabled={!paymentsAvailable || loading}
+                disabled={loading}
                 activeOpacity={0.9}
               >
                 {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Subscribe</Text>}
