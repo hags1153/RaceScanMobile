@@ -52,6 +52,7 @@ export default function SubscribeScreen({ navigation, route }) {
         body: JSON.stringify({ plan: 'unlimited' })
       });
       const { data, raw, status } = await parseResponse(res);
+      console.log('Checkout session response', { status, data, raw: raw?.slice ? raw.slice(0, 200) : raw });
       if (!res.ok || !data?.url) {
         setError(data.message || `Unable to start checkout (${status}) ${raw?.slice(0, 120) || ''}`);
         setLoading(false);
@@ -66,6 +67,7 @@ export default function SubscribeScreen({ navigation, route }) {
       // After browser closes, check subscription status
       const checkRes = await fetch(`${API_BASE}/api/user-info`, { credentials: 'include', cache: 'no-store' });
       const checkData = await checkRes.json();
+      console.log('Post-checkout user info', checkData);
       if (checkData?.subscribed) {
         setMessage('Subscription active! You can now listen live.');
         setError('');
