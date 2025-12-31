@@ -424,7 +424,7 @@ export default function LiveScreen({ navigation, route }) {
                   hasAccess
                     ? handleTogglePlayback
                     : authState.loggedIn
-                      ? () => navigation.navigate('Subscribe')
+                      ? () => navigation.navigate('Subscribe', { returnTo: { stack: 'Tabs', params: { screen: 'Live' } } })
                       : () => navigation.navigate('Tabs', { screen: 'Login' })
                 }
                 activeOpacity={streamUrl && hasAccess ? 0.9 : 0.9}

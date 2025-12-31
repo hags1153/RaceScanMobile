@@ -14,11 +14,13 @@ const parseResponse = async (res) => {
   return { data, raw, status: res.status };
 };
 
-export default function SubscribeScreen({ navigation }) {
+export default function SubscribeScreen({ navigation, route }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loggedIn, setLoggedIn] = useState(false);
+
+  const returnTo = route?.params?.returnTo;
 
   useEffect(() => {
     const load = async () => {
@@ -67,7 +69,13 @@ export default function SubscribeScreen({ navigation }) {
       if (checkData?.subscribed) {
         setMessage('Subscription active! You can now listen live.');
         setError('');
-        setTimeout(() => navigation.navigate('Tabs', { screen: 'Home' }), 700);
+        setTimeout(() => {
+          if (returnTo?.stack) {
+            navigation.navigate(returnTo.stack, returnTo.params || {});
+          } else {
+            navigation.navigate('Tabs', { screen: 'Home' });
+          }
+        }, 700);
       } else {
         setError('Subscription not completed yet. Please finish checkout.');
       }

@@ -142,7 +142,11 @@ export default function AccountScreen({ navigation }) {
                   <Text style={styles.buttonText}>View Schedule</Text>
                 </TouchableOpacity>
                 {!user.subscribed && (
-                  <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Subscribe')} activeOpacity={0.9}>
+                  <TouchableOpacity
+                    style={styles.button}
+                    onPress={() => navigation.navigate('Subscribe', { returnTo: { stack: 'Tabs', params: { screen: 'AccountTab' } } })}
+                    activeOpacity={0.9}
+                  >
                     <Text style={styles.buttonText}>Subscribe</Text>
                   </TouchableOpacity>
                 )}
