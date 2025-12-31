@@ -67,6 +67,14 @@ function TabNavigator() {
           tabBarButton: () => null
         }}
       />
+      <Tab.Screen
+        name="SubscribeTab"
+        component={SubscribeScreen}
+        options={{
+          title: 'Subscribe',
+          tabBarButton: () => null
+        }}
+      />
       <Tab.Screen name="AccountTab" component={AccountTab} options={{ title: 'Account' }} />
     </Tab.Navigator>
   );
