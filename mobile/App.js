@@ -64,6 +64,20 @@ function TabNavigator() {
           tabBarButton: () => null
         }}
       />
+      <Tab.Screen
+        name="SubscribeTab"
+        component={SubscribeScreen}
+        options={{
+          tabBarButton: () => null
+        }}
+      />
+      <Tab.Screen
+        name="AccountTab"
+        component={AccountScreen}
+        options={{
+          tabBarButton: () => null
+        }}
+      />
     </Tab.Navigator>
   );
 }
@@ -72,16 +86,16 @@ export default function App() {
   return (
     <NavigationContainer theme={navTheme}>
       <StatusBar style="light" />
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Tabs" component={TabNavigator} />
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="PhoneEntry" component={PhoneEntryScreen} />
-        <Stack.Screen name="SmsCode" component={SmsCodeScreen} />
-        <Stack.Screen name="Signup" component={SignupScreen} />
-        <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
-        <Stack.Screen name="Account" component={AccountScreen} />
-        <Stack.Screen name="Subscribe" component={SubscribeScreen} />
-      </Stack.Navigator>
-    </NavigationContainer>
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="Tabs" component={TabNavigator} />
+          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="PhoneEntry" component={PhoneEntryScreen} />
+          <Stack.Screen name="SmsCode" component={SmsCodeScreen} />
+          <Stack.Screen name="Signup" component={SignupScreen} />
+          <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
+          <Stack.Screen name="Account" component={AccountScreen} />
+          <Stack.Screen name="Subscribe" component={SubscribeScreen} />
+        </Stack.Navigator>
+      </NavigationContainer>
   );
 }

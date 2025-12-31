@@ -40,7 +40,7 @@ export default function NavBar() {
 
   const goAccount = () => {
     if (navigation?.navigate) {
-      navigation.navigate('Account');
+      navigation.navigate('Tabs', { screen: 'AccountTab' });
     }
   };
 

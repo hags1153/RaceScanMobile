@@ -109,6 +109,15 @@ export default function HomeScreen() {
     };
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      fetch(`${API_BASE}/api/user-info`, { credentials: 'include', cache: 'no-store' })
+        .then((res) => res.json())
+        .then((data) => setAuth({ loggedIn: !!data?.success, subscribed: !!data?.subscribed }))
+        .catch(() => setAuth({ loggedIn: false, subscribed: false }));
+    }, [])
+  );
+
   const cta = useMemo(() => {
     if (liveInfo.live) {
       return { label: auth.subscribed ? 'Listen Now!' : 'Subscribe', variant: 'primary', action: () => auth.subscribed ? navigation.navigate('Tabs', { screen: 'Live' }) : navigation.navigate('Subscribe') };
