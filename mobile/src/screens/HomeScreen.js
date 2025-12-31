@@ -34,7 +34,8 @@ const parseEvents = (csvText = '') => {
   const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
   const idx = {
     raceId: headers.indexOf('event'),
-    track: headers.indexOf('name'),
+    track: headers.indexOf('name') >= 0 ? headers.indexOf('name') : headers.indexOf('track'),
+    location: headers.indexOf('location'),
     date: headers.indexOf('date'),
     time: headers.indexOf('time'),
     klass: headers.indexOf('class')
@@ -44,6 +45,7 @@ const parseEvents = (csvText = '') => {
     const cols = line.split(',').map((c) => c.trim());
     const raceId = idx.raceId >= 0 ? cols[idx.raceId] : cols[0];
     const track = idx.track >= 0 ? cols[idx.track] : cols[1];
+    const location = idx.location >= 0 ? cols[idx.location] : '';
     const date = idx.date >= 0 ? cols[idx.date] : cols[3];
     const time = idx.time >= 0 ? cols[idx.time] : cols[4];
     let klass = idx.klass >= 0 ? (cols[idx.klass] || '').toUpperCase() : '';
@@ -53,7 +55,7 @@ const parseEvents = (csvText = '') => {
       else if (/(^|\\s|-)SMT(\\s|$)/i.test(track)) klass = 'SMT';
     }
     const start = new Date(`${date}T${time}:00-05:00`);
-    events.push({ raceId, track, start, classType: klass });
+    events.push({ raceId, track, location, start, classType: klass });
   });
   return events;
 };
@@ -62,7 +64,7 @@ const computeLiveInfo = (events) => {
   const now = new Date();
   const active = events.filter((evt) => {
     const pre = new Date(evt.start.getTime() - 30 * 60 * 1000);
-    const end = new Date(evt.start.getTime() + 7 * 60 * 60 * 1000);
+    const end = new Date(evt.start.getTime() + 6 * 60 * 60 * 1000);
     return pre <= now && now <= end;
   });
   const upcoming = events
@@ -71,13 +73,15 @@ const computeLiveInfo = (events) => {
   const next = upcoming[0] || null;
   const live = active.length > 0;
   const eventLabel = live ? (active[0]?.track || 'Live event') : (next?.track || 'Next event');
-  return { live, eventLabel, next };
+  const current = live ? active[0] : null;
+  return { live, eventLabel, next, current };
 };
 
 export default function HomeScreen() {
   const navigation = useNavigation();
-  const [liveInfo, setLiveInfo] = useState({ live: false, eventLabel: 'Checking...', next: null });
+  const [liveInfo, setLiveInfo] = useState({ live: false, eventLabel: 'Checking...', next: null, current: null });
   const [auth, setAuth] = useState({ loggedIn: false, subscribed: false });
+  const [now, setNow] = useState(new Date());
 
   useEffect(() => {
     let mounted = true;
@@ -98,7 +102,11 @@ export default function HomeScreen() {
       }
     };
     load();
-    return () => { mounted = false; };
+    const timer = setInterval(() => setNow(new Date()), 1000 * 30);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
   }, []);
 
   const cta = useMemo(() => {
@@ -125,6 +133,17 @@ export default function HomeScreen() {
       })
     : 'TBD';
 
+  const countdown = useMemo(() => {
+    const target = liveInfo.live ? liveInfo.current?.start : nextRace?.start;
+    if (!target) return null;
+    const diff = new Date(target).getTime() - now.getTime();
+    const totalMinutes = Math.max(0, Math.floor(diff / 60000));
+    const days = Math.floor(totalMinutes / (60 * 24));
+    const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+    const minutes = totalMinutes % 60;
+    return { days, hours, minutes };
+  }, [liveInfo.live, liveInfo.current, nextRace, now]);
+
   return (
     <ScrollView style={styles.container} contentInsetAdjustmentBehavior="automatic">
       <NavBar />
@@ -138,12 +157,28 @@ export default function HomeScreen() {
               <Image source={{ uri: `${API_BASE}/static/images/RaceScanLong.png` }} style={styles.logoLong} resizeMode="contain" />
             </View>
             <Text style={styles.tagline}>{liveInfo.live ? 'Live event is active' : 'Stay ready for the green'}</Text>
-            <Text style={styles.title}>{liveInfo.eventLabel || 'RaceScan'}</Text>
+            <Text style={styles.title}>{liveInfo.live ? 'Live Race Now!' : (liveInfo.eventLabel || 'RaceScan')}</Text>
             <Text style={styles.subtitle}>
               {liveInfo.live
-                ? 'Tap Live Now to jump into driver audio.'
-                : `Next up: ${nextRace?.track || 'TBD'} • ${nextDateText}`}
+                ? `${liveInfo.current?.track || ''}${liveInfo.current?.location ? ` • ${liveInfo.current.location}` : ''}`
+                : `Next up: ${nextRace?.track || 'TBD'}${nextRace?.location ? ` • ${nextRace.location}` : ''} • ${nextDateText}`}
             </Text>
+            {!liveInfo.live && countdown ? (
+              <View style={styles.countdownRow}>
+                <View style={styles.countdownBlock}>
+                  <Text style={styles.countdownNumber}>{countdown.days}</Text>
+                  <Text style={styles.countdownLabel}>Days</Text>
+                </View>
+                <View style={styles.countdownBlock}>
+                  <Text style={styles.countdownNumber}>{countdown.hours}</Text>
+                  <Text style={styles.countdownLabel}>Hours</Text>
+                </View>
+                <View style={styles.countdownBlock}>
+                  <Text style={styles.countdownNumber}>{countdown.minutes}</Text>
+                  <Text style={styles.countdownLabel}>Minutes</Text>
+                </View>
+              </View>
+            ) : null}
             <View style={styles.ctaRow}>
               <CTAButton label={cta.label} onPress={cta.action} />
               <CTAButton label="Schedule" onPress={() => navigation.navigate('Tabs', { screen: 'Schedule' })} variant="secondary" />
@@ -270,6 +305,32 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.md,
     flexWrap: 'wrap'
+  },
+  countdownRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm
+  },
+  countdownBlock: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    minWidth: 80
+  },
+  countdownNumber: {
+    color: colors.textPrimary,
+    fontSize: 20,
+    fontWeight: '800'
+  },
+  countdownLabel: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
   },
   metaPill: {
     flexDirection: 'row',
