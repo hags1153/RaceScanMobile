@@ -31,6 +31,21 @@ export default function PhoneEntryScreen({ navigation }) {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
+  const formatPhone = (value) => {
+    const digits = value.replace(/\D/g, '').slice(0, 10);
+    const part1 = digits.slice(0, 3);
+    const part2 = digits.slice(3, 6);
+    const part3 = digits.slice(6, 10);
+    let out = part1;
+    if (part2) out = `(${part1}) ${part2}`;
+    if (part3) out = `(${part1}) ${part2}-${part3}`;
+    return out;
+  };
+
+  const handleChangePhone = (val) => {
+    setPhone(formatPhone(val));
+  };
+
   const handleContinue = async () => {
     if (!phone.trim()) {
       setError('Enter your phone number to continue.');
@@ -118,10 +133,10 @@ export default function PhoneEntryScreen({ navigation }) {
               <Text style={styles.label}>Phone Number</Text>
               <TextInput
                 style={styles.input}
-                placeholder="+1XXXXXXXXXX"
+                placeholder="Phone Number"
                 placeholderTextColor={colors.textSecondary}
                 value={phone}
-                onChangeText={setPhone}
+                onChangeText={handleChangePhone}
                 keyboardType="phone-pad"
                 autoCapitalize="none"
                 returnKeyType="done"
@@ -150,12 +165,13 @@ export default function PhoneEntryScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     padding: spacing.lg,
-    flexGrow: 1
+    flexGrow: 1,
+    justifyContent: 'center'
   },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
-    padding: spacing.lg,
+    padding: spacing.xl,
     borderWidth: 1,
     borderColor: colors.border,
     gap: spacing.sm,
