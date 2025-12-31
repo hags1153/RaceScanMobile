@@ -318,7 +318,7 @@ export default function LiveScreen({ navigation, route }) {
     return drivers.filter((d) => (d.classList || [d.classType]).some((c) => String(c || '').toUpperCase() === target));
   }, [drivers, activeClass]);
 
-  const loadAndPlay = async (url) => {
+  const loadAndPlay = async (url, triedFallback = false) => {
     if (!url) return;
     try {
       if (soundRef.current) {
@@ -337,6 +337,17 @@ export default function LiveScreen({ navigation, route }) {
       setPlaying(false);
       setPlayStatus('error');
       console.error('Stream play error', e);
+      if (!triedFallback) {
+        // try HTTP port 8500 fallback for iOS playback issues
+        try {
+          const plain = url.replace(/^https?:\/\/[^/]+/, '');
+          const alt = `http://racescan.racing:8500${plain}`;
+          console.log('Attempting fallback stream', alt);
+          await loadAndPlay(alt, true);
+        } catch (err) {
+          console.error('Fallback stream failed', err);
+        }
+      }
     }
   };
 
@@ -424,7 +435,7 @@ export default function LiveScreen({ navigation, route }) {
                   hasAccess
                     ? handleTogglePlayback
                     : authState.loggedIn
-                      ? () => navigation.navigate('Subscribe', { returnTo: { stack: 'Tabs', params: { screen: 'Live' } } })
+                      ? () => navigation.navigate('Tabs', { screen: 'SubscribeTab', params: { returnTo: { stack: 'Tabs', params: { screen: 'Live' } } } })
                       : () => navigation.navigate('Tabs', { screen: 'Login' })
                 }
                 activeOpacity={streamUrl && hasAccess ? 0.9 : 0.9}
