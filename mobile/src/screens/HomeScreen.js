@@ -37,7 +37,7 @@ const parseEvents = (csvText = '') => {
     return headers.findIndex((h) => set.includes(h));
   };
   const idx = {
-    raceId: findIdx('event', 'raceid', 'race_id', 'race'),
+    raceId: findIdx('raceid', 'event', 'race_id', 'race'),
     track: findIdx('name', 'track'),
     location: findIdx('location', 'city'),
     date: findIdx('date'),
@@ -46,7 +46,8 @@ const parseEvents = (csvText = '') => {
   };
   const events = [];
   lines.slice(1).forEach((line) => {
-    const cols = line.split(',').map((c) => c.trim());
+    // handle quoted commas by splitting on CSV-ish regex
+    const cols = line.match(/(".*?"|[^",]+)(?=,|$)/g)?.map((c) => c.replace(/^"|"$/g, '').trim()) || [];
     if (!cols.length) return;
     const raceId = idx.raceId >= 0 ? cols[idx.raceId] : cols[0];
     const track = idx.track >= 0 ? cols[idx.track] : (cols[1] || 'TBD');
