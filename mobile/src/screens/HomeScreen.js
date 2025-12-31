@@ -32,22 +32,28 @@ const parseEvents = (csvText = '') => {
   const lines = csvText.trim().split('\n').filter(Boolean);
   if (!lines.length) return [];
   const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
+  const findIdx = (...candidates) => {
+    const set = candidates.map((c) => c.toLowerCase());
+    return headers.findIndex((h) => set.includes(h));
+  };
   const idx = {
-    raceId: headers.indexOf('event'),
-    track: headers.indexOf('name') >= 0 ? headers.indexOf('name') : headers.indexOf('track'),
-    location: headers.indexOf('location'),
-    date: headers.indexOf('date'),
-    time: headers.indexOf('time'),
-    klass: headers.indexOf('class')
+    raceId: findIdx('event', 'raceid', 'race_id', 'race'),
+    track: findIdx('name', 'track'),
+    location: findIdx('location', 'city'),
+    date: findIdx('date'),
+    time: findIdx('time'),
+    klass: findIdx('class')
   };
   const events = [];
   lines.slice(1).forEach((line) => {
     const cols = line.split(',').map((c) => c.trim());
+    if (!cols.length) return;
     const raceId = idx.raceId >= 0 ? cols[idx.raceId] : cols[0];
-    const track = idx.track >= 0 ? cols[idx.track] : cols[1];
+    const track = idx.track >= 0 ? cols[idx.track] : (cols[1] || 'TBD');
     const location = idx.location >= 0 ? cols[idx.location] : '';
     const date = idx.date >= 0 ? cols[idx.date] : cols[3];
     const time = idx.time >= 0 ? cols[idx.time] : cols[4];
+    if (!date || !time) return;
     let klass = idx.klass >= 0 ? (cols[idx.klass] || '').toUpperCase() : '';
     if (!klass) {
       if (/(^|\\s|-)LMSC(\\s|$)/i.test(track)) klass = 'LMSC';
