@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View, Image } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { colors, spacing, radius } from '../theme';
 
 export default function NavBar() {
@@ -14,27 +14,29 @@ export default function NavBar() {
     }
   };
 
-  useEffect(() => {
-    let isMounted = true;
-    const loadSession = async () => {
-      try {
-        const res = await fetch('https://racescan.racing/api/user-info', { credentials: 'include', cache: 'no-store' });
-        const data = await res.json();
-        if (!isMounted) return;
-        if (data?.success) {
-          setUser({ loggedIn: true, firstName: data.firstName || 'User', lastName: data.lastName || '' });
-        } else {
-          setUser({ loggedIn: false, firstName: '', lastName: '' });
-        }
-      } catch {
-        if (isMounted) setUser({ loggedIn: false, firstName: '', lastName: '' });
+  const loadSession = useCallback(async () => {
+    try {
+      const res = await fetch('https://racescan.racing/api/user-info', { credentials: 'include', cache: 'no-store' });
+      const data = await res.json();
+      if (data?.success) {
+        setUser({ loggedIn: true, firstName: data.firstName || 'User', lastName: data.lastName || '' });
+      } else {
+        setUser({ loggedIn: false, firstName: '', lastName: '' });
       }
-    };
-    loadSession();
-    return () => {
-      isMounted = false;
-    };
+    } catch {
+      setUser({ loggedIn: false, firstName: '', lastName: '' });
+    }
   }, []);
+
+  useEffect(() => {
+    loadSession();
+  }, [loadSession]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadSession();
+    }, [loadSession])
+  );
 
   const goAccount = () => {
     if (navigation?.navigate) {

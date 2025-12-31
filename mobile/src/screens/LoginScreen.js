@@ -103,6 +103,9 @@ export default function LoginScreen({ navigation }) {
               </TouchableOpacity>
               {message ? <Text style={styles.success}>{message}</Text> : null}
               {error ? <Text style={styles.error}>{error}</Text> : null}
+              <TouchableOpacity onPress={() => navigation.navigate('Tabs', { screen: 'Signup' })} activeOpacity={0.85}>
+                <Text style={styles.link}>Don’t have an account? Sign up</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -182,5 +185,11 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     color: colors.accent,
     fontWeight: '700'
+  },
+  link: {
+    marginTop: spacing.sm,
+    color: colors.accent,
+    fontWeight: '700',
+    textDecorationLine: 'underline'
   }
 });
