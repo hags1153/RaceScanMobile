@@ -134,7 +134,11 @@ export default function AccountScreen({ navigation }) {
               <Text style={styles.sectionLabel}>Subscription</Text>
               <View style={styles.row}>
                 <Text style={styles.label}>Plan</Text>
-                <Text style={styles.value}>{user.subscriptionPlan || '—'}</Text>
+                {user.subscribed ? (
+                  <Text style={[styles.badge, styles.badgeGold]}>Season Pass</Text>
+                ) : (
+                  <Text style={styles.value}>{user.subscriptionPlan || '—'}</Text>
+                )}
               </View>
               <View style={styles.row}>
                 <Text style={styles.label}>Status</Text>
@@ -236,6 +240,11 @@ const styles = StyleSheet.create({
   badgeWarn: {
     borderColor: colors.accent,
     color: colors.accent
+  },
+  badgeGold: {
+    borderColor: '#d4af37',
+    color: '#d4af37',
+    backgroundColor: 'rgba(212,175,55,0.12)'
   },
   actions: {
     marginTop: spacing.sm,
