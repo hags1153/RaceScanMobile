@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
+import { useFocusEffect } from '@react-navigation/native';
 import Screen from '../components/Screen';
 import { colors, spacing, radius } from '../theme';
 import NavBar from '../components/NavBar';
@@ -304,6 +305,12 @@ export default function LiveScreen({ navigation, route }) {
     };
   }, [listOnly]);
 
+  useFocusEffect(
+    useCallback(() => {
+      fetchAccess(liveInfo.activeRaceId || null);
+    }, [liveInfo.activeRaceId])
+  );
+
   const statusColor = useMemo(() => (liveInfo.live ? colors.success : colors.warning), [liveInfo.live]);
   const filteredDrivers = useMemo(() => {
     if (!activeClass) return drivers;
@@ -447,13 +454,13 @@ export default function LiveScreen({ navigation, route }) {
             {loading ? (
               <ActivityIndicator size="small" color={colors.accent} style={{ marginTop: spacing.md }} />
             ) : (
-              <FlatList
-                data={filteredDrivers}
-                keyExtractor={(item, index) => `${item.number}-${index}`}
-                renderItem={({ item }) => <DriverCard driver={item} onPress={handleSelectDriver} />}
-                contentContainerStyle={styles.list}
-              />
-            )}
+          <FlatList
+            data={filteredDrivers}
+            keyExtractor={(item, index) => `${item.number}-${index}`}
+            renderItem={({ item }) => <DriverCard driver={item} onPress={handleSelectDriver} locked={!hasAccess} />}
+            contentContainerStyle={styles.list}
+          />
+        )}
           </>
         )}
       </View>
