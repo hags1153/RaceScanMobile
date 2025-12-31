@@ -49,7 +49,7 @@ export default function SubscribeScreen({ navigation, route }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ plan: 'unlimited' })
+        body: JSON.stringify({ plan: 'unlimited', source: 'mobile' })
       });
       const { data, raw, status } = await parseResponse(res);
       console.log('Checkout session response', { status, data, raw: raw?.slice ? raw.slice(0, 200) : raw });
