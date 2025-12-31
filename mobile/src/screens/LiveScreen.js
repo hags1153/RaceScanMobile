@@ -418,21 +418,30 @@ export default function LiveScreen({ navigation, route }) {
                       {!hasAccess ? 'Login to listen' : playing ? 'Pause' : 'Play'} stream
                     </Text>
                   </TouchableOpacity>
-                  {streamUrl && (
-                    <Text style={styles.notice}>
-                      Status: {playStatus}{streamUrl ? ` • ${streamUrl.replace(API_BASE, '')}` : ''}
-                    </Text>
-                  )}
-                  {!hasAccess ? (
-                    <TouchableOpacity onPress={() => navigation.navigate('Tabs', { screen: 'Login' })} activeOpacity={0.85}>
-                      <Text style={styles.notice}>Login and subscribe or use a day pass for this race to listen.</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </>
-              ) : (
-                <Text style={styles.notice}>Browse drivers by class. Streaming controls appear when a live event is active.</Text>
+              {streamUrl && (
+                <Text style={styles.notice}>
+                  Status: {playStatus}{streamUrl ? ` • ${streamUrl.replace(API_BASE, '')}` : ''}
+                </Text>
               )}
-            </View>
+              {!hasAccess ? (
+                <TouchableOpacity onPress={() => navigation.navigate('Tabs', { screen: 'Login' })} activeOpacity={0.85}>
+                  <Text style={styles.notice}>Login and subscribe or use a day pass for this race to listen.</Text>
+                </TouchableOpacity>
+              ) : null}
+              {!hasAccess && authState.loggedIn ? (
+                <TouchableOpacity
+                  style={[styles.listenBtn, styles.listenBtnGhost]}
+                  onPress={() => navigation.navigate('Subscribe')}
+                  activeOpacity={0.9}
+                >
+                  <Text style={styles.listenText}>Subscribe</Text>
+                </TouchableOpacity>
+              ) : null}
+            </>
+          ) : (
+            <Text style={styles.notice}>Browse drivers by class. Streaming controls appear when a live event is active.</Text>
+          )}
+        </View>
 
             <Text style={styles.listHeading}>Driver mounts</Text>
             {loading ? (
@@ -519,6 +528,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 }
+  },
+  listenBtnGhost: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    marginTop: spacing.sm
   },
   listenBtnDisabled: {
     opacity: 0.5

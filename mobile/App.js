@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import { StripeProvider } from '@stripe/stripe-react-native';
 import HomeScreen from './src/screens/HomeScreen';
 import ScheduleScreen from './src/screens/ScheduleScreen';
 import LiveScreen from './src/screens/LiveScreen';
@@ -13,10 +14,12 @@ import PhoneEntryScreen from './src/screens/PhoneEntryScreen';
 import SmsCodeScreen from './src/screens/SmsCodeScreen';
 import AccountScreen from './src/screens/AccountScreen';
 import VerifyEmailScreen from './src/screens/VerifyEmailScreen';
+import SubscribeScreen from './src/screens/SubscribeScreen';
 import { colors } from './src/theme';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
+const API_BASE = 'https://racescan.racing';
 
 const navTheme = {
   ...DefaultTheme,
@@ -68,18 +71,42 @@ function TabNavigator() {
 }
 
 export default function App() {
+  const [publishableKey, setPublishableKey] = useState('pk_test_placeholder');
+  const [stripeReady, setStripeReady] = useState(false);
+
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/stripe/config`);
+        const data = await res.json();
+        if (data?.success && data.publishableKey) {
+          setPublishableKey(data.publishableKey);
+          setStripeReady(true);
+        } else {
+          setStripeReady(false);
+        }
+      } catch {
+        setStripeReady(false);
+      }
+    };
+    loadConfig();
+  }, []);
+
   return (
-    <NavigationContainer theme={navTheme}>
-      <StatusBar style="light" />
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Tabs" component={TabNavigator} />
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="PhoneEntry" component={PhoneEntryScreen} />
-        <Stack.Screen name="SmsCode" component={SmsCodeScreen} />
-        <Stack.Screen name="Signup" component={SignupScreen} />
-        <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
-        <Stack.Screen name="Account" component={AccountScreen} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <StripeProvider publishableKey={publishableKey} merchantIdentifier="merchant.com.racescan" urlScheme="racescan">
+      <NavigationContainer theme={navTheme}>
+        <StatusBar style="light" />
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="Tabs" component={TabNavigator} />
+          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="PhoneEntry" component={PhoneEntryScreen} />
+          <Stack.Screen name="SmsCode" component={SmsCodeScreen} />
+          <Stack.Screen name="Signup" component={SignupScreen} />
+          <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
+          <Stack.Screen name="Account" component={AccountScreen} />
+          <Stack.Screen name="Subscribe" component={SubscribeScreen} />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </StripeProvider>
   );
 }

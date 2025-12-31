@@ -109,7 +109,7 @@ export default function HomeScreen() {
       return { label: 'Login or Subscribe', variant: 'primary', action: () => navigation.navigate('Tabs', { screen: 'Login' }) };
     }
     if (auth.loggedIn && !auth.subscribed) {
-      return { label: 'Subscribe', variant: 'primary', action: () => Linking.openURL(`${API_BASE}/events/subscribe.html`).catch(() => {}) };
+      return { label: 'Subscribe', variant: 'primary', action: () => navigation.navigate('Subscribe') };
     }
     return { label: 'Drivers', variant: 'primary', action: () => navigation.navigate('Tabs', { screen: 'Live', params: { listOnly: true } }) };
   }, [auth.loggedIn, auth.subscribed, liveInfo.live, navigation]);

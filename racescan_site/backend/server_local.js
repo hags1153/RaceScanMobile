@@ -6,6 +6,7 @@ const mysql = require('mysql2/promise');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
+const twilio = require('twilio');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
@@ -40,6 +41,11 @@ const config = {
         secretKey: process.env.STRIPE_SECRET_KEY || '',
         priceDayPass: process.env.STRIPE_PRICE_DAY_PASS || '',
         priceUnlimited: process.env.STRIPE_PRICE_UNLIMITED || ''
+    },
+    twilio: {
+        accountSid: process.env.TWILIO_ACCOUNT_SID || '',
+        authToken: process.env.TWILIO_AUTH_TOKEN || '',
+        verifySid: process.env.TWILIO_VERIFY_SID || ''
     }
 };
 
@@ -64,6 +70,14 @@ const stripe = config.stripe.secretKey
 
 if (!stripe) {
     console.warn('⚠️ Stripe secret key is missing; payment routes are disabled.');
+}
+
+const twilioClient = (config.twilio.accountSid && config.twilio.authToken && config.twilio.verifySid)
+    ? twilio(config.twilio.accountSid, config.twilio.authToken)
+    : null;
+
+if (!twilioClient) {
+    console.warn('⚠️ Twilio Verify not configured; SMS verification routes will be disabled.');
 }
 
 const pool = mysql.createPool({
@@ -98,6 +112,22 @@ pool.on('connection', (connection) => {
     });
 });
 
+(async () => {
+    try {
+        await ensureColumn('users', 'phone_number', 'VARCHAR(32) NULL');
+        await ensureColumn('users', 'phone_verified', 'TINYINT(1) DEFAULT 0');
+        const idx = await query(
+            `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.STATISTICS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND INDEX_NAME = 'uq_users_phone'`
+        );
+        if (idx[0]?.cnt === 0) {
+            await execute('ALTER TABLE users ADD UNIQUE INDEX uq_users_phone (phone_number)');
+        }
+    } catch (err) {
+        console.warn('⚠️ Unable to ensure phone columns exist:', err.message);
+    }
+})();
+
 const mailTransport = (process.env.EMAIL_USER && process.env.EMAIL_PASS)
     ? nodemailer.createTransport({
         service: 'gmail',
@@ -120,6 +150,19 @@ const requireAuth = (req, res, next) => {
 };
 
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
+const normalizePhone = (phone) => {
+    if (!phone) return '';
+    let p = String(phone).trim();
+    if (!p.startsWith('+')) {
+        const digits = p.replace(/\D/g, '');
+        if (digits.length === 10) {
+            p = `+1${digits}`;
+        } else if (digits.length > 0) {
+            p = `+${digits}`;
+        }
+    }
+    return p;
+};
 
 const safeJsonParse = (value, fallback = []) => {
     if (!value) {
@@ -163,6 +206,17 @@ async function execute(query, params = []) {
 async function query(query, params = []) {
     const [rows] = await pool.query(query, params);
     return rows;
+}
+
+async function ensureColumn(table, column, definition) {
+    const rows = await query(
+        `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+        [table, column]
+    );
+    if (rows[0]?.cnt === 0) {
+        console.log(`ℹ️ Adding column ${column} to ${table}`);
+        await execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
 }
 
 // Middleware
@@ -292,13 +346,17 @@ app.post('/api/select-day-pass-event', requireAuth, asyncHandler(async (req, res
 
 app.post('/signup', asyncHandler(async (req, res) => {
     console.log('🔹 Signup route hit');
-    const {firstName, lastName, email, password} = req.body;
+    const {firstName, lastName, email, password, phone, channel} = req.body;
 
     if (!firstName || !lastName || !email || !password) {
         return res.status(400).json({success: false, message: 'All fields are required'});
     }
 
     const normalizedEmail = normalizeEmail(email);
+    const normalizedPhone = normalizePhone(phone);
+    if (!normalizedPhone) {
+        return res.status(400).json({success: false, message: 'Phone number is required for SMS verification'});
+    }
 
     const existingUser = await execute(
         'SELECT id FROM users WHERE email = ?',
@@ -313,13 +371,24 @@ app.post('/signup', asyncHandler(async (req, res) => {
         });
     }
 
+    if (normalizedPhone) {
+        const phoneExists = await execute('SELECT id FROM users WHERE phone_number = ?', [normalizedPhone]);
+        if (phoneExists.length) {
+            return res.status(409).json({
+                success: false,
+                message: 'Phone number already in use. Please use a different phone or log in.',
+                userExists: true
+            });
+        }
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     const [insertResult] = await pool.execute(`
-        INSERT INTO users (first_name, last_name, email, password_hash, subscribed, tier, email_verified, verification_code)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [firstName.trim(), lastName.trim(), normalizedEmail, hashedPassword, 0, null, 0, verificationCode]);
+        INSERT INTO users (first_name, last_name, email, password_hash, subscribed, tier, email_verified, verification_code, phone_number, phone_verified)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [firstName.trim(), lastName.trim(), normalizedEmail, hashedPassword, 0, null, 0, verificationCode, normalizedPhone || null, 0]);
 
     const userId = insertResult.insertId;
 
@@ -327,25 +396,45 @@ app.post('/signup', asyncHandler(async (req, res) => {
     req.session.email = normalizedEmail;
     req.session.firstName = firstName.trim();
     req.session.emailVerified = false;
+    req.session.phoneVerified = false;
     req.session.verificationCode = verificationCode;
     req.session.subscribed = false;
     req.session.tier = null;
+    req.session.phone_number = normalizedPhone || null;
 
     await req.session.save();
 
     console.log(`✅ Created user ${normalizedEmail} with ID ${userId}`);
 
-    try {
-        await sendVerificationEmail(normalizedEmail, verificationCode);
-    } catch (error) {
-        console.error('❌ Failed to send verification email:', error);
-        return res.status(500).json({success: false, message: 'Unable to send verification email'});
+    const wantsSms = String(channel || '').toLowerCase() === 'sms';
+
+    if (wantsSms) {
+        if (!twilioClient || !config.twilio.verifySid) {
+            return res.status(503).json({success: false, message: 'SMS verification not configured'});
+        }
+        try {
+            await twilioClient.verify.v2.services(config.twilio.verifySid).verifications.create({
+                to: normalizedPhone,
+                channel: 'sms'
+            });
+        } catch (err) {
+            console.error('❌ Failed to send SMS verification:', err.message);
+            return res.status(500).json({success: false, message: 'Unable to send SMS verification'});
+        }
+    } else {
+        try {
+            await sendVerificationEmail(normalizedEmail, verificationCode);
+        } catch (error) {
+            console.error('❌ Failed to send verification email:', error);
+            return res.status(500).json({success: false, message: 'Unable to send verification email'});
+        }
     }
 
     res.json({
         success: true,
-        message: 'Signup successful! Redirecting to email verification...',
-        redirect: '/auth/verify-email.html'
+        message: wantsSms ? 'Signup successful! Check your SMS for a code.' : 'Signup successful! Check your email for verification.',
+        redirect: '/auth/verify-email.html',
+        channel: wantsSms ? 'sms' : 'email'
     });
 }));
 
@@ -387,17 +476,18 @@ app.get('/verify-email', asyncHandler(async (req, res) => {
 
 app.post('/login', asyncHandler(async (req, res) => {
     console.log('🔹 Login route hit');
-    const {email, password} = req.body;
+    const {email, password} = req.body; // email can be phone or email
 
     if (!email || !password) {
-        return res.status(400).json({success: false, message: 'Email and password are required'});
+        return res.status(400).json({success: false, message: 'Email/phone and password are required'});
     }
 
     const normalizedEmail = normalizeEmail(email);
+    const normalizedPhone = normalizePhone(email);
 
     const users = await execute(
-        'SELECT * FROM users WHERE email = ?',
-        [normalizedEmail]
+        'SELECT * FROM users WHERE email = ? OR phone_number = ?',
+        [normalizedEmail, normalizedPhone]
     );
 
     if (!users.length) {
@@ -411,19 +501,18 @@ app.post('/login', asyncHandler(async (req, res) => {
         return res.status(401).json({success: false, message: 'Invalid password'});
     }
 
-    if (!user.email_verified) {
+    if (!user.email_verified && !user.phone_verified) {
         return res.status(403).json({
             success: false,
-            message: 'Your email is not verified.',
-            action: 'verify_email',
-            email: user.email
+            message: 'Your account is not verified. Please verify via email or SMS.'
         });
     }
 
     req.session.userId = user.id;
     req.session.email = user.email;
     req.session.firstName = user.first_name;
-    req.session.emailVerified = true;
+    req.session.emailVerified = !!user.email_verified;
+    req.session.phoneVerified = !!user.phone_verified;
     req.session.subscribed = !!user.subscribed;
     req.session.tier = user.tier;
 
@@ -470,6 +559,50 @@ app.post('/verify-code', asyncHandler(async (req, res) => {
     await req.session.save();
 
     res.json({success: true, message: '✅ Email verified successfully! Redirecting...'});
+}));
+
+app.post('/api/sms/send-code', requireAuth, asyncHandler(async (req, res) => {
+    if (!twilioClient || !config.twilio.verifySid) {
+        return res.status(503).json({success: false, message: 'SMS verification not configured'});
+    }
+    const phone = normalizePhone(req.body.phone || req.session.phone_number || '');
+    if (!phone) {
+        return res.status(400).json({success: false, message: 'Phone number is required'});
+    }
+    const existing = await execute('SELECT id FROM users WHERE phone_number = ? AND id != ?', [phone, req.session.userId]);
+    if (existing.length) {
+        return res.status(409).json({success: false, message: 'Phone number already in use by another account'});
+    }
+    await twilioClient.verify.v2.services(config.twilio.verifySid).verifications.create({
+        to: phone,
+        channel: 'sms'
+    });
+    await execute('UPDATE users SET phone_number = ?, phone_verified = 0 WHERE id = ?', [phone, req.session.userId]);
+    req.session.phoneVerified = false;
+    await req.session.save();
+    res.json({success: true, message: 'Verification code sent via SMS'});
+}));
+
+app.post('/api/sms/check-code', requireAuth, asyncHandler(async (req, res) => {
+    if (!twilioClient || !config.twilio.verifySid) {
+        return res.status(503).json({success: false, message: 'SMS verification not configured'});
+    }
+    const phone = normalizePhone(req.body.phone || req.session.phone_number || '');
+    const code = String(req.body.code || '').trim();
+    if (!phone || !code) {
+        return res.status(400).json({success: false, message: 'Phone and code are required'});
+    }
+    const check = await twilioClient.verify.v2.services(config.twilio.verifySid).verificationChecks.create({
+        to: phone,
+        code
+    });
+    if (check.status !== 'approved') {
+        return res.status(400).json({success: false, message: 'Invalid or expired code'});
+    }
+    await execute('UPDATE users SET phone_number = ?, phone_verified = 1 WHERE id = ?', [phone, req.session.userId]);
+    req.session.phoneVerified = true;
+    await req.session.save();
+    res.json({success: true, message: 'Phone verified'});
 }));
 
 app.post('/api/reset-password-confirm', asyncHandler(async (req, res) => {
@@ -771,6 +904,7 @@ app.get('/api/session', (req, res) => {
         sessionId: req.sessionID || null,
         firstName: req.session.firstName || null,
         emailVerified: !!req.session.emailVerified,
+        phoneVerified: !!req.session.phoneVerified,
         subscribed: !!req.session.subscribed,
         tier: req.session.tier || null
     });
@@ -796,6 +930,8 @@ app.get('/api/user-info', requireAuth, asyncHandler(async (req, res) => {
                 last_name,
                 email,
                 email_verified,
+                phone_number,
+                phone_verified,
                 subscribed,
                 tier,
                 subscription_status,
@@ -817,6 +953,8 @@ app.get('/api/user-info', requireAuth, asyncHandler(async (req, res) => {
         lastName: user.last_name,
         email: user.email,
         emailVerified: !!user.email_verified,
+        phone: user.phone_number || '',
+        phoneVerified: !!user.phone_verified,
         subscribed: !!user.subscribed,
         subscriptionPlan: user.tier || 'N/A',
         subscriptionStatus: user.subscription_status || 'Inactive',
