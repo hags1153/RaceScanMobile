@@ -103,7 +103,7 @@ export default function HomeScreen() {
 
   const cta = useMemo(() => {
     if (liveInfo.live) {
-      return { label: 'Live Now!', variant: 'primary', action: () => navigation.navigate('Tabs', { screen: 'Live' }) };
+      return { label: auth.subscribed ? 'Listen Now!' : 'Subscribe', variant: 'primary', action: () => auth.subscribed ? navigation.navigate('Tabs', { screen: 'Live' }) : navigation.navigate('Subscribe') };
     }
     if (!auth.loggedIn) {
       return { label: 'Login or Subscribe', variant: 'primary', action: () => navigation.navigate('Tabs', { screen: 'Login' }) };
