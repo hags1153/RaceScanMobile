@@ -37,6 +37,14 @@ export default function PhoneEntryScreen({ navigation }) {
       setMessage('');
       return;
     }
+    // Normalize US 10-digit to +1 format for convenience
+    let normalizedPhone = phone.trim();
+    const digits = normalizedPhone.replace(/\D/g, '');
+    if (digits.length === 10) {
+      normalizedPhone = `+1${digits}`;
+    } else if (normalizedPhone.startsWith('1') && digits.length === 11) {
+      normalizedPhone = `+${digits}`;
+    }
     setLoading(true);
     setError('');
     setMessage('');
@@ -48,7 +56,7 @@ export default function PhoneEntryScreen({ navigation }) {
         const checkRes = await fetch(`${host}/api/check-phone`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({ phone: phone.trim() })
+          body: JSON.stringify({ phone: normalizedPhone })
         });
         const { data: checkData, raw: checkRaw, status: checkStatus } = await parseResponse(checkRes);
         if (!checkRes.ok) {
@@ -69,15 +77,16 @@ export default function PhoneEntryScreen({ navigation }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ phone: phone.trim() })
+          body: JSON.stringify({ phone: normalizedPhone })
         });
         const { data: smsData, raw: smsRaw, status: smsStatus } = await parseResponse(smsRes);
         if (smsRes.ok) {
           setLoading(false);
-          navigation.navigate('SmsCode', { phone: phone.trim() });
+          navigation.navigate('SmsCode', { phone: normalizedPhone });
           return;
         } else {
-          setError(smsData.message || `Could not send code. (${smsStatus}) ${smsRaw?.slice(0, 80) || ''}`);
+          console.log('SMS send failed', { host, status: smsStatus, raw: smsRaw });
+          setError(smsData.message || `Could not send code. (${smsStatus}) ${smsRaw?.slice(0, 120) || ''}`);
           setLoading(false);
           return;
         }
