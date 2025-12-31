@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useStripe } from '@stripe/stripe-react-native';
+import * as WebBrowser from 'expo-web-browser';
 import Screen from '../components/Screen';
 import NavBar from '../components/NavBar';
 import { colors, spacing, radius } from '../theme';
@@ -15,7 +15,6 @@ const parseResponse = async (res) => {
 };
 
 export default function SubscribeScreen({ navigation }) {
-  const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -52,53 +51,35 @@ export default function SubscribeScreen({ navigation }) {
     setMessage('');
     let lastErr;
     try {
-      const res = await fetch(`${API_BASE}/api/mobile/subscribe-sheet`, {
+      const res = await fetch(`${API_BASE}/api/create-checkout-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ plan: 'unlimited' })
       });
       const { data, raw, status } = await parseResponse(res);
-      if (!res.ok || !data?.clientSecret) {
+      if (!res.ok || !data?.url) {
         setError(data.message || `Unable to start checkout (${status}) ${raw?.slice(0, 120) || ''}`);
         setLoading(false);
         return;
       }
 
-      const init = await initPaymentSheet({
-        paymentIntentClientSecret: data.clientSecret,
-        merchantDisplayName: 'RaceScan'
-      });
-      if (init.error) {
-        setError(init.error.message || 'Unable to start payment.');
-        setLoading(false);
-        return;
+      const result = await WebBrowser.openBrowserAsync(data.url);
+      if (result.type === 'cancel') {
+        setMessage('Closed checkout. You can reopen to finish subscribing.');
       }
 
-      const present = await presentPaymentSheet();
-      if (present.error) {
-        setError(present.error.message || 'Payment canceled.');
-        setLoading(false);
-        return;
+      // After browser closes, check subscription status
+      const checkRes = await fetch(`${API_BASE}/api/user-info`, { credentials: 'include', cache: 'no-store' });
+      const checkData = await checkRes.json();
+      if (checkData?.subscribed) {
+        setMessage('Subscription active! You can now listen live.');
+        setError('');
+        setTimeout(() => navigation.navigate('Tabs', { screen: 'Home' }), 700);
+      } else {
+        setError('Subscription not completed yet. Please finish checkout.');
       }
-
-      const confirmRes = await fetch(`${API_BASE}/api/mobile/subscribe-confirm`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ subscriptionId: data.subscriptionId })
-      });
-      const { data: confirmData, raw: confirmRaw, status: confirmStatus } = await parseResponse(confirmRes);
-      if (!confirmRes.ok || !confirmData?.success) {
-        setError(confirmData.message || `Could not activate subscription (${confirmStatus}) ${confirmRaw?.slice(0, 120) || ''}`);
-        setLoading(false);
-        return;
-      }
-
-      setMessage('Subscription active! You can now listen live.');
-      setError('');
       setLoading(false);
-      setTimeout(() => navigation.navigate('Tabs', { screen: 'Home' }), 700);
     } catch (err) {
       lastErr = err;
       setError('Network error. Please try again.');
