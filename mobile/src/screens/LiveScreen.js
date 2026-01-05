@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import { useFocusEffect } from '@react-navigation/native';
@@ -9,7 +9,8 @@ import NavBar from '../components/NavBar';
 
 const API_BASE = 'https://racescan.racing';
 // Stream through nginx /icecast/ proxy (HTTPS). Keep everything on HTTPS to avoid ATS/network issues.
-const STREAM_BASE = 'https://racescan.racing/icecast';
+const STREAM_PROXY = 'https://racescan.racing/api/stream?mount=';
+const STREAM_ORIGINS = [API_BASE, 'https://www.racescan.racing'];
 
 const fallbackDrivers = [
   { number: '62', name: 'Keelen Harvick', classType: 'SMT' },
@@ -48,6 +49,98 @@ const slugify = (value = '', fallback = '') => {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return v || String(fallback || '');
+};
+
+const stripQueryAndExt = (value = '') =>
+  String(value || '')
+    .replace(/\?.*$/, '')
+    .replace(/\.(mp3|aac|m4a|ogg|opus)$/i, '');
+
+const ensureLeadingSlash = (value = '') => {
+  if (!value) return '';
+  return value.startsWith('/') ? value : `/${value}`;
+};
+
+const normalizeMountBase = (mountPath = '') => {
+  const sanitized = ensureLeadingSlash(stripQueryAndExt(mountPath));
+  if (!sanitized) return '';
+  return sanitized.startsWith('/icecast/') ? sanitized.replace(/^\/icecast/, '') : sanitized;
+};
+
+const buildStreamCandidates = ({ mountPath, sessionId }) => {
+  const base = normalizeMountBase(mountPath);
+  if (!base) return [];
+  const primary = `/icecast${base}`;
+  const fallback = base;
+  const paths = [primary, fallback];
+  const extensions = ['.mp3'];
+  const candidates = [];
+
+  STREAM_ORIGINS.forEach((origin) => {
+    paths.forEach((path) => {
+      extensions.forEach((ext) => {
+        const withExt = path.endsWith(ext) ? path : `${path}${ext}`;
+        candidates.push(`${origin}${withExt}`);
+      });
+    });
+  });
+
+  if (sessionId) {
+    const encodedMount = encodeURIComponent(primary.endsWith('.mp3') ? primary : `${primary}.mp3`);
+    candidates.unshift(`${STREAM_PROXY}${encodedMount}&sid=${encodeURIComponent(sessionId)}`);
+  } else {
+    const encodedMount = encodeURIComponent(primary.endsWith('.mp3') ? primary : `${primary}.mp3`);
+    candidates.unshift(`${STREAM_PROXY}${encodedMount}`);
+  }
+
+  return Array.from(new Set(candidates));
+};
+
+const withCacheBuster = (url) => {
+  if (!url) return url;
+  const joiner = url.includes('?') ? '&' : '?';
+  return `${url}${joiner}ts=${Date.now()}`;
+};
+
+const logProbe = (label, payload) => {
+  if (__DEV__) {
+    console.log(`[LiveStream] ${label}`, payload);
+  }
+};
+
+const pickStatusFields = (status) => {
+  if (!status) return status;
+  return {
+    isLoaded: status.isLoaded,
+    isPlaying: status.isPlaying,
+    isBuffering: status.isBuffering,
+    shouldPlay: status.shouldPlay,
+    didJustFinish: status.didJustFinish,
+    isMuted: status.isMuted,
+    volume: status.volume,
+    rate: status.rate,
+    positionMillis: status.positionMillis,
+    playableDurationMillis: status.playableDurationMillis,
+    durationMillis: status.durationMillis,
+    error: status.error
+  };
+};
+
+const probeStreamUrl = async (url) => {
+  if (!url) return;
+  try {
+    const res = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+    logProbe('HEAD', {
+      url,
+      status: res.status,
+      ok: res.ok,
+      contentType: res.headers.get('content-type'),
+      contentLength: res.headers.get('content-length'),
+      acceptRanges: res.headers.get('accept-ranges')
+    });
+  } catch (e) {
+    logProbe('HEAD failed', { url, error: e?.message || String(e) });
+  }
 };
 
 const normalizeClassList = (value) => {
@@ -154,7 +247,7 @@ const computeLiveInfo = (events) => {
   const active = events.filter((evt) => {
     const start = new Date(evt.start.getTime());
     const pre = new Date(start.getTime() - 30 * 60 * 1000);
-    const end = new Date(start.getTime() + 7 * 60 * 60 * 1000);
+    const end = new Date(start.getTime() + 6 * 60 * 60 * 1000);
     return pre <= now && now <= end;
   });
   const live = active.length > 0;
@@ -201,18 +294,28 @@ export default function LiveScreen({ navigation, route }) {
   const [drivers, setDrivers] = useState(fallbackDrivers);
   const [loading, setLoading] = useState(true);
   const [streamUrl, setStreamUrl] = useState('');
+  const [streamCandidates, setStreamCandidates] = useState([]);
   const [playing, setPlaying] = useState(false);
   const [playStatus, setPlayStatus] = useState('idle'); // idle | loading | playing | error
+  const [lastError, setLastError] = useState('');
   const [currentDriver, setCurrentDriver] = useState(null);
   const [activeClass, setActiveClass] = useState(null);
   const [authState, setAuthState] = useState({ loggedIn: false, subscribed: false, hasDayPass: false });
+  const [sessionId, setSessionId] = useState(null);
   const soundRef = useRef(null);
+  const [query, setQuery] = useState('');
+  const [classFilter, setClassFilter] = useState('ALL');
 
   const fetchAccess = async (raceId) => {
     let state = { loggedIn: false, subscribed: false, hasDayPass: false };
     try {
-      const res = await fetch(`${API_BASE}/api/user-info`, { credentials: 'include', cache: 'no-store' });
-      const data = await res.json();
+      const [infoRes, sessRes] = await Promise.all([
+        fetch(`${API_BASE}/api/user-info`, { credentials: 'include', cache: 'no-store' }),
+        fetch(`${API_BASE}/api/session`, { credentials: 'include', cache: 'no-store' })
+      ]);
+      const data = await infoRes.json();
+      const sess = await sessRes.json().catch(() => ({}));
+      if (sess?.sessionId) setSessionId(sess.sessionId);
       state = { loggedIn: !!data.success, subscribed: !!data.subscribed, hasDayPass: false };
       if (state.loggedIn && raceId) {
         try {
@@ -236,13 +339,38 @@ export default function LiveScreen({ navigation, route }) {
   useEffect(() => {
     let isMounted = true;
     // Configure audio for live streaming
-    Audio.setAudioModeAsync({
-      staysActiveInBackground: true,
-      allowsRecordingIOS: false,
-      playsInSilentModeIOS: true,
-      interruptionModeIOS: Audio.INTERRUPTION_MODE_IOS_DO_NOT_MIX,
-      shouldDuckAndroid: true
-    }).catch((e) => console.warn('Audio mode set failed', e));
+    const applyAudioMode = async () => {
+      const baseMode = {
+        staysActiveInBackground: true,
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: false,
+        playThroughEarpieceAndroid: false
+      };
+      try {
+        await Audio.setAudioModeAsync({
+          ...baseMode,
+          interruptionModeIOS: Audio.INTERRUPTION_MODE_IOS_DO_NOT_MIX,
+          interruptionModeAndroid: Audio.INTERRUPTION_MODE_ANDROID_DO_NOT_MIX
+        });
+        logProbe('Audio mode set (full)', { ok: true });
+      } catch (e) {
+        console.warn('Audio mode set failed', e);
+        try {
+          await Audio.setAudioModeAsync(baseMode);
+          logProbe('Audio mode set (fallback)', { ok: true });
+        } catch (fallbackError) {
+          console.warn('Audio mode fallback failed', fallbackError);
+        }
+      }
+      try {
+        const mode = await Audio.getAudioModeAsync();
+        logProbe('Audio mode active', mode);
+      } catch (e) {
+        logProbe('Audio mode read failed', { error: e?.message || String(e) });
+      }
+    };
+    applyAudioMode();
 
     const load = async () => {
       try {
@@ -278,19 +406,21 @@ export default function LiveScreen({ navigation, route }) {
         });
         setDrivers(enrichedDrivers);
         const firstActive = enrichedDrivers.find((d) => d.isActive);
-        const allowPlay = !listOnly && accessState.loggedIn && (accessState.subscribed || accessState.hasDayPass);
+        const allowPlay = liveMeta.live && !listOnly && accessState.loggedIn && (accessState.subscribed || accessState.hasDayPass);
         if (firstActive && allowPlay) {
           const mount = firstActive.activePath || firstActive.plainMount;
-          const normalizedMount = mount.startsWith('/') ? mount : `/${mount}`;
-          const url = normalizedMount.startsWith('http') ? normalizedMount : `${STREAM_BASE}${normalizedMount}`;
-          setStreamUrl(url);
+          const candidates = buildStreamCandidates({ mountPath: mount, sessionId });
+          setStreamCandidates(candidates);
+          setStreamUrl(candidates[0] || '');
         } else {
+          setStreamCandidates([]);
           setStreamUrl('');
         }
       } catch (e) {
         if (!isMounted) return;
         setLiveInfo({ live: false, eventLabel: 'Offline mode' });
         setDrivers(fallbackDrivers);
+        setStreamCandidates([]);
         setStreamUrl('');
       } finally {
         if (isMounted) setLoading(false);
@@ -312,40 +442,96 @@ export default function LiveScreen({ navigation, route }) {
   );
 
   const statusColor = useMemo(() => (liveInfo.live ? colors.success : colors.warning), [liveInfo.live]);
-  const filteredDrivers = useMemo(() => {
-    if (!activeClass) return drivers;
-    const target = String(activeClass).toUpperCase();
-    return drivers.filter((d) => (d.classList || [d.classType]).some((c) => String(c || '').toUpperCase() === target));
-  }, [drivers, activeClass]);
+  const classOptions = useMemo(() => {
+    const set = new Set();
+    drivers.forEach((d) => {
+      const classes = d.classList && d.classList.length ? d.classList : [d.classType];
+      classes.forEach((c) => {
+        const val = String(c || '').toUpperCase();
+        if (val) set.add(val);
+      });
+    });
+    const ordered = Array.from(set).sort();
+    if (liveInfo.live && liveInfo.activeClasses?.length) {
+      const allowed = new Set(liveInfo.activeClasses.map((c) => String(c || '').toUpperCase()));
+      return ['ALL', ...ordered.filter((c) => allowed.has(c))];
+    }
+    return ['ALL', ...ordered];
+  }, [drivers, liveInfo.live, liveInfo.activeClasses]);
 
-  const loadAndPlay = async (url, triedFallback = false) => {
-    if (!url) return;
-    try {
-      if (soundRef.current) {
-        await soundRef.current.unloadAsync();
+  useEffect(() => {
+    if (!classOptions.includes(classFilter)) {
+      setClassFilter('ALL');
+    }
+  }, [classOptions, classFilter]);
+
+  const filteredDrivers = useMemo(() => {
+    const trimmed = query.toLowerCase().replace(/\s+/g, ' ').trim();
+    return drivers.filter((d) => {
+      if (liveInfo.live && liveInfo.activeClasses?.length) {
+        const allowed = new Set(liveInfo.activeClasses.map((c) => String(c || '').toUpperCase()));
+        const classes = d.classList && d.classList.length ? d.classList : [d.classType];
+        const matchLiveClass = classes.some((c) => allowed.has(String(c || '').toUpperCase()));
+        if (!matchLiveClass) return false;
       }
-      setPlayStatus('loading');
-      console.log('Attempting stream', url);
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: url, headers: { Accept: '*/*' } },
-        { shouldPlay: true, isLiveStream: true }
-      );
-      soundRef.current = sound;
-      setPlaying(true);
-      setPlayStatus('playing');
-    } catch (e) {
-      setPlaying(false);
-      setPlayStatus('error');
-      console.error('Stream play error', e);
-      if (!triedFallback) {
-        // try HTTP port 8500 fallback for iOS playback issues
-        try {
-          const plain = url.replace(/^https?:\/\/[^/]+/, '');
-          const alt = `http://racescan.racing:8500${plain}`;
-          console.log('Attempting fallback stream', alt);
-          await loadAndPlay(alt, true);
-        } catch (err) {
-          console.error('Fallback stream failed', err);
+      if (classFilter !== 'ALL') {
+        const classes = d.classList && d.classList.length ? d.classList : [d.classType];
+        const matchClass = classes.some((c) => String(c || '').toUpperCase() === classFilter);
+        if (!matchClass) return false;
+      }
+      if (!trimmed) return true;
+      const name = String(d.name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+      const number = String(d.number || '').toLowerCase().trim();
+      const nameCompact = name.replace(/\s+/g, '');
+      const queryCompact = trimmed.replace(/\s+/g, '');
+      return name.includes(trimmed) || nameCompact.includes(queryCompact) || number.includes(trimmed);
+    });
+  }, [drivers, classFilter, query]);
+
+  const loadAndPlay = async (candidates) => {
+    const urls = Array.isArray(candidates) ? candidates : [candidates].filter(Boolean);
+    if (!urls.length) return;
+    if (soundRef.current) {
+      await soundRef.current.unloadAsync().catch(() => {});
+    }
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i];
+      try {
+        setPlayStatus('loading');
+        setLastError('');
+        const liveUrl = withCacheBuster(url);
+        console.log('Attempting stream', liveUrl);
+        await probeStreamUrl(liveUrl);
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: liveUrl, headers: { Accept: 'audio/mpeg' } },
+          { shouldPlay: true, isLiveStream: true },
+          null,
+          false
+        );
+        sound.setOnPlaybackStatusUpdate((status) => {
+          logProbe('Playback status', pickStatusFields(status));
+        });
+        await sound.setIsMutedAsync(false);
+        await sound.setVolumeAsync(1.0);
+        const status = await sound.getStatusAsync().catch(() => null);
+        logProbe('Initial status', pickStatusFields(status));
+        soundRef.current = sound;
+        setPlaying(true);
+        setPlayStatus('playing');
+        setStreamUrl(liveUrl);
+        return;
+      } catch (e) {
+        const message = e?.message || String(e);
+        const label = urls.length > 1 ? `Candidate ${i + 1}/${urls.length}` : 'Candidate';
+        if (i === urls.length - 1) {
+          console.error('Stream play error', e);
+          setLastError(`${label}: ${message}`);
+          setPlayStatus('error');
+          setPlaying(false);
+        } else {
+          // Intermediate failures are expected while we try fallbacks; keep out of the redbox.
+          console.warn('Stream play candidate failed', { label, message });
+          setLastError(`${label}: ${message}`);
         }
       }
     }
@@ -359,123 +545,152 @@ export default function LiveScreen({ navigation, route }) {
       setPlayStatus('idle');
       return;
     }
-    await loadAndPlay(streamUrl);
+    await loadAndPlay(streamCandidates.length ? streamCandidates : streamUrl);
   };
 
   const handleSelectDriver = async (driver) => {
     const hasAccess = authState.loggedIn && (authState.subscribed || authState.hasDayPass);
-    if (listOnly) return;
+    if (listOnly || !liveInfo.live) return;
     if (!driver?.isActive || !hasAccess) return;
     const mount = driver.activePath || driver.plainMount;
-    const normalizedMount = mount?.startsWith('/') ? mount : `/${mount || ''}`;
-    const withIcecast = normalizedMount.startsWith('http')
-      ? normalizedMount
-      : `${STREAM_BASE}${normalizedMount}`;
-    console.log('Switching stream to', normalizedMount, 'url', withIcecast);
-    setStreamUrl(withIcecast);
+    const candidates = buildStreamCandidates({ mountPath: mount, sessionId });
+    console.log('Switching stream to', mount, 'candidates', candidates);
+    setStreamCandidates(candidates);
+    setStreamUrl(candidates[0] || '');
     setCurrentDriver(driver);
-    await loadAndPlay(withIcecast);
+    await loadAndPlay(candidates);
   };
 
   const hasAccess = authState.loggedIn && (authState.subscribed || authState.hasDayPass);
-  const showPlayer = !listOnly;
+  const derivedListOnly = listOnly || !liveInfo.live;
+  const showPlayer = !derivedListOnly;
 
   return (
     <Screen>
+      <NavBar />
       <View style={styles.content}>
-        <NavBar />
-        {!authState.loggedIn ? (
+        <View style={styles.body}>
+        {showPlayer && !authState.loggedIn ? (
           <View style={styles.lockCard}>
             <Text style={styles.title}>Live Driver Audio</Text>
-            <Text style={styles.subtitle}>Please log in to view live drivers.</Text>
-            <TouchableOpacity style={styles.listenBtn} onPress={() => navigation.navigate('Tabs', { screen: 'Login' })} activeOpacity={0.9}>
+            <Text style={styles.subtitle}>Please log in to listen live.</Text>
+            <TouchableOpacity style={styles.listenBtn} onPress={() => navigation.navigate('Login')} activeOpacity={0.9}>
               <Ionicons name="log-in-outline" color="#fff" size={16} />
               <Text style={styles.listenText}>Login</Text>
             </TouchableOpacity>
           </View>
-        ) : (
-          <>
-            <View style={styles.headerCard}>
-              <View>
-                <Text style={styles.title}>Live Driver Audio</Text>
-                <Text style={styles.subtitle}>Matches the site’s live panel, now in-app</Text>
-              </View>
-              <View style={[styles.statusPill, { backgroundColor: statusColor }]}>
-                <Ionicons name={liveInfo.live ? 'radio' : 'time-outline'} size={16} color="#fff" />
-                <Text style={styles.statusText}>{liveInfo.live ? 'Live' : 'Standby'}</Text>
-              </View>
+        ) : null}
+        <View style={styles.headerCard}>
+            <View>
+              <Text style={styles.title}>{liveInfo.live ? 'Live Driver Audio' : 'Driver Directory'}</Text>
+              <Text style={styles.subtitle}>
+                {liveInfo.live ? 'Matches the site’s live panel, now in-app' : 'Browse every driver on the roster'}
+              </Text>
             </View>
-
-            <View style={styles.infoCard}>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Event</Text>
-                <Text style={styles.infoValue}>{liveInfo.eventLabel}</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Drivers loaded</Text>
-                <Text style={styles.infoValue}>{drivers.length}</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Class</Text>
-                <Text style={styles.infoValue}>{activeClass || '—'}</Text>
-              </View>
-          {showPlayer ? (
-            <>
-              <View style={styles.selectedCard}>
-                <Text style={styles.selectedLabel}>Selected</Text>
-                <Text style={styles.selectedName}>{currentDriver?.name || 'Tap a live driver'}</Text>
-              </View>
-              <TouchableOpacity
-                style={[
-                  styles.listenBtn,
-                  (!streamUrl || !hasAccess) && styles.listenBtnDisabled,
-                  (!hasAccess && authState.loggedIn) && styles.listenBtnGhost
-                ]}
-                onPress={
-                  hasAccess
-                    ? handleTogglePlayback
-                    : authState.loggedIn
-                      ? () => navigation.navigate('Subscribe', { returnTo: { stack: 'Tabs', params: { screen: 'Live' } } })
-                      : () => navigation.navigate('Tabs', { screen: 'Login' })
-                }
-                activeOpacity={streamUrl && hasAccess ? 0.9 : 0.9}
-                disabled={!streamUrl && hasAccess}
-              >
-                <Ionicons name={hasAccess ? (playing ? 'pause' : 'play') : 'lock-closed'} color="#fff" size={16} />
-                <Text style={styles.listenText}>
-                  {hasAccess ? (playing ? 'Pause' : 'Listen In') : (authState.loggedIn ? 'Subscribe to Listen' : 'Login to Listen')}
-                </Text>
-              </TouchableOpacity>
-              {streamUrl && hasAccess && (
-                <Text style={styles.notice}>
-                  Status: {playStatus}{streamUrl ? ` • ${streamUrl.replace(API_BASE, '')}` : ''}
-                </Text>
-              )}
-              {!hasAccess && authState.loggedIn ? (
-                <Text style={styles.notice}>You need a subscription or day pass to listen.</Text>
-              ) : null}
-              {!hasAccess && !authState.loggedIn ? (
-                <Text style={styles.notice}>Login and subscribe or use a day pass for this race to listen.</Text>
-              ) : null}
-            </>
-          ) : (
-            <Text style={styles.notice}>Browse drivers by class. Streaming controls appear when a live event is active.</Text>
-          )}
+            <View style={[styles.statusPill, { backgroundColor: statusColor }]}>
+              <Ionicons name={liveInfo.live ? 'radio' : 'time-outline'} size={16} color="#fff" />
+              <Text style={styles.statusText}>{liveInfo.live ? 'Live' : 'Standby'}</Text>
+            </View>
         </View>
 
-            <Text style={styles.listHeading}>Driver mounts</Text>
+            {showPlayer ? (
+              <View style={styles.infoCard}>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Event</Text>
+                  <Text style={styles.infoValue}>{liveInfo.eventLabel}</Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Class</Text>
+                  <Text style={styles.infoValue}>{classFilter}</Text>
+                </View>
+                <View style={styles.selectedCard}>
+                  <Text style={styles.selectedLabel}>Selected</Text>
+                  <Text style={styles.selectedName}>{currentDriver?.name || 'Tap a live driver'}</Text>
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.listenBtn,
+                    (!streamUrl || !hasAccess) && styles.listenBtnDisabled,
+                    (!hasAccess && authState.loggedIn) && styles.listenBtnGhost
+                  ]}
+                  onPress={
+                    hasAccess
+                      ? handleTogglePlayback
+                      : authState.loggedIn
+                        ? () => navigation.navigate('Subscribe', { returnTo: { stack: 'Tabs', params: { screen: 'Live' } } })
+                        : () => navigation.navigate('Login')
+                  }
+                  activeOpacity={streamUrl && hasAccess ? 0.9 : 0.9}
+                  disabled={!streamUrl && hasAccess}
+                >
+                  <Ionicons name={hasAccess ? (playing ? 'pause' : 'play') : 'lock-closed'} color="#fff" size={16} />
+                  <Text style={styles.listenText}>
+                    {hasAccess ? (playing ? 'Pause' : 'Listen In') : (authState.loggedIn ? 'Subscribe to Listen' : 'Login to Listen')}
+                  </Text>
+                </TouchableOpacity>
+                {streamUrl && hasAccess && (
+                  <Text style={styles.notice}>
+                    Status: {playStatus}{streamUrl ? ` • ${streamUrl.replace(API_BASE, '')}` : ''}
+                  </Text>
+                )}
+                {lastError ? (
+                  <Text style={styles.notice} selectable>
+                    Last error: {lastError}
+                  </Text>
+                ) : null}
+                {!hasAccess && authState.loggedIn ? (
+                  <Text style={styles.notice}>You need a subscription or day pass to listen.</Text>
+                ) : null}
+                {!hasAccess && !authState.loggedIn ? (
+                  <Text style={styles.notice}>Login and subscribe or use a day pass for this race to listen.</Text>
+                ) : null}
+              </View>
+            ) : (
+              <Text style={styles.notice}>Streaming controls appear when a live event is active.</Text>
+            )}
+
+            {!showPlayer && (
+              <>
+                <View style={styles.searchRow}>
+                  <Ionicons name="search-outline" size={18} color={colors.textSecondary} />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search by name or number"
+                    placeholderTextColor={colors.textSecondary}
+                    value={query}
+                    onChangeText={setQuery}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="search"
+                  />
+                </View>
+                <View style={styles.chips}>
+                  {classOptions.map((cls) => (
+                    <TouchableOpacity
+                      key={cls}
+                      onPress={() => setClassFilter(cls)}
+                      style={[styles.chip, classFilter === cls && styles.chipSelected]}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={[styles.chipText, classFilter === cls && styles.chipTextSelected]}>{cls}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+            <Text style={styles.listHeading}>{showPlayer ? 'Drivers' : 'All Drivers'}</Text>
             {loading ? (
               <ActivityIndicator size="small" color={colors.accent} style={{ marginTop: spacing.md }} />
             ) : (
           <FlatList
             data={filteredDrivers}
             keyExtractor={(item, index) => `${item.number}-${index}`}
-            renderItem={({ item }) => <DriverCard driver={item} onPress={handleSelectDriver} locked={!hasAccess} />}
+            renderItem={({ item }) => <DriverCard driver={item} onPress={handleSelectDriver} locked={showPlayer && !hasAccess} />}
             contentContainerStyle={styles.list}
           />
         )}
-          </>
-        )}
+        
+        </View>
       </View>
     </Screen>
   );
@@ -484,8 +699,11 @@ export default function LiveScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   content: {
     flex: 1,
-    padding: spacing.lg,
     backgroundColor: colors.background
+  },
+  body: {
+    flex: 1,
+    padding: spacing.lg
   },
   headerCard: {
     flexDirection: 'row',
@@ -590,7 +808,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.xs,
-    flex: 1
+    marginBottom: spacing.sm
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.xs,
+    marginBottom: spacing.sm
+  },
+  searchInput: {
+    flex: 1,
+    color: colors.textPrimary,
+    paddingVertical: 6
   },
   chip: {
     paddingHorizontal: spacing.sm,
