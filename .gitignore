@@ -1,2 +1,7 @@
 .env
 *.json
+!mobile/*.json
+!mobile/**/package.json
+!mobile/**/package-lock.json
+!mobile/**/app.json
+!mobile/**/eas.json
